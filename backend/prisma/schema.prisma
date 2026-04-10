@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  characters Character[]
+}
+
+model Character {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  level     Int      @default(1)
+  exp       Int      @default(0)
+  
+  // Stats
+  str       Int      @default(5)
+  agi       Int      @default(5)
+  dex       Int      @default(5)
+  luk       Int      @default(5)
+  int       Int      @default(5)
+
+  // Energy System (For anti-botting / travel)
+  energy    Int      @default(100)
+  maxEnergy Int      @default(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
