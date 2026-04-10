@@ -1,11 +1,65 @@
 import "./global.css";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import Toast from "react-native-toast-message";
+import Toast, { BaseToast, ErrorToast, InfoToast } from "react-native-toast-message";
 import { useEffect } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useGameStore } from "../store/useGameStore";
-import { SocketProvider } from "../context/SocketContext";
+import { SocketProvider, useSocket } from "../context/SocketContext";
+import { CustomAlert } from "../components/CustomAlert";
+import DirectTradeModal from "../components/DirectTradeModal";
+
+const toastConfig = {
+  success: (props: any) => (
+    <BaseToast
+      {...props}
+      style={{ borderLeftColor: '#10b981', backgroundColor: '#1e293b', height: 70 }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}
+      text2Style={{ color: '#94a3b8', fontSize: 14 }}
+    />
+  ),
+  error: (props: any) => (
+    <ErrorToast
+      {...props}
+      style={{ borderLeftColor: '#ef4444', backgroundColor: '#1e293b', height: 70 }}
+      text1Style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}
+      text2Style={{ color: '#94a3b8', fontSize: 14 }}
+    />
+  ),
+  info: (props: any) => (
+    <InfoToast
+      {...props}
+      style={{ borderLeftColor: '#6366f1', backgroundColor: '#1e293b', height: 70 }}
+      text1Style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}
+      text2Style={{ color: '#94a3b8', fontSize: 14 }}
+    />
+  )
+};
+
+function GlobalUI() {
+  const { tradeWith, setTradeWith, alertConfig } = useSocket();
+
+  return (
+    <>
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onConfirm={alertConfig.onConfirm}
+        onCancel={alertConfig.onCancel}
+      />
+      {tradeWith && (
+        <DirectTradeModal 
+          visible={!!tradeWith}
+          targetUserId={tradeWith}
+          onClose={() => setTradeWith(null)}
+        />
+      )}
+    </>
+  );
+}
 
 export default function RootLayout() {
   const token = useAuthStore((state) => state.token);
@@ -23,14 +77,11 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === "(auth)";
 
     if (!token && !inAuthGroup) {
-      // If we're not logged in and not in the auth group, redirect to login
-      // Wrap in timeout to ensure navigation bridge is ready
       const timer = setTimeout(() => {
         router.replace("/(auth)/login");
       }, 1);
       return () => clearTimeout(timer);
     } else if (token && inAuthGroup) {
-      // If we are logged in but in the auth group, redirect to the adventure tab
       const timer = setTimeout(() => {
         router.replace("/(tabs)/adventure");
       }, 1);
@@ -42,7 +93,8 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <SocketProvider>
         <Stack screenOptions={{ headerShown: false }} />
-        <Toast />
+        <GlobalUI />
+        <Toast config={toastConfig} />
       </SocketProvider>
     </SafeAreaProvider>
   );

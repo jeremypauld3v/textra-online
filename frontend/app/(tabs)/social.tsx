@@ -1,10 +1,9 @@
-import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Alert, Modal, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, ScrollView } from "react-native";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../../context/SocketContext";
 import { useAuthStore } from "../../store/useAuthStore";
 import { gameApi } from "../../api/game";
-import DirectTradeModal from "../../components/DirectTradeModal";
 
 interface ChatMessage {
   id: string;
@@ -29,11 +28,9 @@ interface PrivateMessage {
 }
 
 export default function SocialScreen() {
-  const { socket, connected, onlineUserIds } = useSocket();
+  const { socket, connected, onlineUserIds, requestTrade, showAlert, hideAlert } = useSocket();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // ...
   const [input, setInput] = useState("");
-  const [tradeWith, setTradeWith] = useState<string | null>(null);
   const [targetIGN, setTargetIGN] = useState("");
   const [isAddingFriend, setIsAddingFriend] = useState(false);
   const flatListRef = useRef<FlatList>(null);
@@ -95,11 +92,11 @@ export default function SocialScreen() {
     if (!socket) return;
 
     socket.on("chat_broadcast", (data: any) => {
-      const newMessage = {
-        id: Math.random().toString(36).substr(2, 9),
-        ...data,
-      };
-      setMessages((prev) => [...prev, newMessage].slice(-100));
+      setMessages((prev) => {
+         // Prevent duplicates
+         if (prev.find(m => m.id === data.id)) return prev;
+         return [...prev, data].slice(-100);
+      });
     });
 
     socket.on("private_broadcast", (data: PrivateMessage) => {
@@ -112,42 +109,33 @@ export default function SocialScreen() {
       }));
     });
 
-    socket.on("trade_invite", (data: { fromUserId: string }) => {
-       Alert.alert(
-          "Trade Invitation",
-          `A player wants to trade with you!`,
-          [
-             { text: "Decline", style: "cancel" },
-             { text: "Accept", onPress: () => setTradeWith(data.fromUserId) }
-          ]
-       );
-    });
-
     return () => {
       socket.off("chat_broadcast");
       socket.off("private_broadcast");
-      socket.off("trade_invite");
     };
   }, [socket, activePmUser, currentUserId]);
-
-  const requestTrade = (targetUserId: string) => {
-     if (targetUserId === currentUserId) return;
-     socket?.emit("trade_request", targetUserId);
-     setTradeWith(targetUserId);
-     setSelectedUser(null);
-  };
 
   const handleAddFriend = async (name: string) => {
     if (!name.trim()) return;
     try {
       setIsAddingFriend(true);
       await gameApi.addFriend(name.trim());
-      Alert.alert("Success", `${name} added to friends!`);
+      showAlert({
+         title: "Success",
+         message: `${name} has been added to your friends.`,
+         type: 'success',
+         onConfirm: hideAlert
+      });
       setTargetIGN("");
       fetchFriends();
       setSelectedUser(null);
     } catch (e: any) {
-      Alert.alert("Error", e.response?.data?.error || "Failed to add friend");
+      showAlert({
+         title: "Error",
+         message: e.response?.data?.error || "Failed to add friend",
+         type: 'error',
+         onConfirm: hideAlert
+      });
     } finally {
       setIsAddingFriend(false);
     }
@@ -194,7 +182,7 @@ export default function SocialScreen() {
            <FlatList
              ref={flatListRef}
              data={messages}
-             keyExtractor={(item) => item.id}
+             keyExtractor={(item) => item.id || Math.random().toString()}
              onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
              renderItem={({ item }) => (
                 <TouchableOpacity 
@@ -260,7 +248,12 @@ export default function SocialScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity 
-                onPress={() => selectedUser && requestTrade(selectedUser.userId)}
+                onPress={() => {
+                   if (selectedUser) {
+                      requestTrade(selectedUser.userId);
+                      setSelectedUser(null);
+                   }
+                }}
                 className="bg-emerald-500/20 py-4 rounded-2xl flex-row items-center justify-center border border-emerald-500/30"
               >
                 <Ionicons name="swap-horizontal" size={20} color="#10b981" className="mr-3" />
@@ -412,15 +405,6 @@ export default function SocialScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
-      {/* 🤝 DIRECT TRADE MODAL */}
-      {tradeWith && (
-         <DirectTradeModal 
-            visible={!!tradeWith} 
-            targetUserId={tradeWith} 
-            onClose={() => setTradeWith(null)} 
-         />
-       )}
     </KeyboardAvoidingView>
   );
 }

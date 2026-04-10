@@ -133,11 +133,6 @@ export const gameApi = {
     return response.data;
   },
 
-  getTradeHistory: async () => {
-    const response = await apiClient.get<{ trades: any[] }>("/game/trades/history");
-    return response.data;
-  },
-
   useItem: async (inventoryItemId: string) => {
     const response = await apiClient.post<{ 
       success: boolean; 

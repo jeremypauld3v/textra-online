@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 
 let io: Server;
 const onlineUsers = new Map<string, number>(); // userId -> connection count
+const activeTrades = new Map<string, string>(); // userId -> partnerId
 
 export function initSocket(fastify: FastifyInstance) {
   io = new Server(fastify.server, {
@@ -58,12 +59,13 @@ export function initSocket(fastify: FastifyInstance) {
           }
        });
 
-       io.emit("chat_broadcast", {
+       const payload = {
           userId,
           characterName: char.name,
           message: msg,
           timestamp: new Date().toISOString()
-       });
+       };
+       io.emit("chat_broadcast", payload);
     });
 
     // Private Messaging
@@ -96,8 +98,59 @@ export function initSocket(fastify: FastifyInstance) {
     // Trading logic
     socket.on("trade_request", async (targetUserId: string) => {
        if (targetUserId === userId) return; // Block self-trade
-       console.log(`🤝 Trade Request: ${userId} -> ${targetUserId}`);
-       io.to(`user:${targetUserId}`).emit("trade_invite", { fromUserId: userId });
+
+       // ANTI-SPAM: Check if either user is busy
+       if (activeTrades.has(userId)) {
+          console.log(`⚠️ Blocked Trade Request: ${userId} is already busy.`);
+          return;
+       }
+       if (activeTrades.has(targetUserId)) {
+          console.log(`⚠️ Blocked Trade Request: ${targetUserId} is busy.`);
+          return;
+       }
+
+       const char = await prisma.character.findFirst({ where: { userId } });
+       if (!char) {
+          console.error(`❌ Trade Request Failed: User ${userId} has no character.`);
+          return;
+       }
+
+       console.log(`🤝 [SYSTEM] Trade Request: ${char.name} (${userId}) -> ${targetUserId}`);
+       io.to(`user:${targetUserId}`).emit("trade_invite", { 
+          fromUserId: userId,
+          fromName: char.name 
+       });
+    });
+
+    socket.on("trade_respond", async (data: { targetUserId: string, accepted: boolean }) => {
+       console.log(`🙋 [SYSTEM] Trade Response from ${userId} to ${data.targetUserId}: ${data.accepted ? 'ACCEPTED' : 'DECLINED'}`);
+       
+       if (data.accepted) {
+          // Verify neither is busy now
+          if (activeTrades.has(userId) || activeTrades.has(data.targetUserId)) {
+             io.to(`user:${userId}`).emit("trade_declined", { message: "One of the players is now busy." });
+             return;
+          }
+
+          console.log(`✅ [SYSTEM] Initializing Trade: ${userId} <-> ${data.targetUserId}`);
+          
+          // SET ACTIVE TRADE (Lock them out of other trades)
+          activeTrades.set(userId, data.targetUserId);
+          activeTrades.set(data.targetUserId, userId);
+
+          // Send confirm to both to open modals
+          io.to(`user:${userId}`).emit("trade_start", { partnerUserId: data.targetUserId });
+          io.to(`user:${data.targetUserId}`).emit("trade_start", { partnerUserId: userId });
+       } else {
+          io.to(`user:${data.targetUserId}`).emit("trade_declined", { fromUserId: userId });
+       }
+    });
+
+    socket.on("trade_cancel", (data: { targetUserId: string }) => {
+       console.log(`🛑 [SYSTEM] Trade Cancelled by ${userId} for ${data.targetUserId}`);
+       activeTrades.delete(userId);
+       activeTrades.delete(data.targetUserId);
+       io.to(`user:${data.targetUserId}`).emit("trade_cancelled", { fromUserId: userId });
     });
 
     socket.on("trade_update", (data: { toUserId: string, items: any[], gold: number, locked: boolean }) => {
@@ -109,22 +162,14 @@ export function initSocket(fastify: FastifyInstance) {
        });
     });
 
-    socket.on("trade_commit", async (data: { 
-       targetUserId: string, 
-       myItems: { id: string, quantity: number }[],
-       myGold: number, 
-       hisItems: { id: string, quantity: number }[], 
-       hisGold: number 
-    }) => {
-       if (data.targetUserId === userId) return;
-       console.log(`💎 Trade Committing: ${userId} <-> ${data.targetUserId}`);
-       
+    socket.on("trade_commit", async (data: { targetUserId: string, myItems: any[], myGold: number, hisItems: any[], hisGold: number }) => {
        try {
-          await prisma.$transaction(async (tx: any) => {
+          await prisma.$transaction(async (tx) => {
              const me = await tx.character.findFirst({ where: { userId } });
              const him = await tx.character.findFirst({ where: { userId: data.targetUserId } });
-             
-             if (!me || !him) throw new Error("Character not found");
+
+             if (!me || !him) throw new Error("Characters not found");
+
              if (me.gold < data.myGold) throw new Error("Not enough gold");
              if (him.gold < data.hisGold) throw new Error("Partner not enough gold");
 
@@ -175,7 +220,7 @@ export function initSocket(fastify: FastifyInstance) {
              const hisOfferSummary = await processTransfer(data.hisItems, him, me);
 
              // 3. Log Trade
-             await tx.tradeLog.create({
+             await (tx as any).tradeLog.create({
                 data: {
                    initiatorId: me.id,
                    partnerId: him.id,
@@ -187,15 +232,30 @@ export function initSocket(fastify: FastifyInstance) {
 
           io.to(`user:${userId}`).emit("trade_complete", { success: true });
           io.to(`user:${data.targetUserId}`).emit("trade_complete", { success: true });
+
+          // CLEAR ACTIVE TRADE
+          activeTrades.delete(userId);
+          activeTrades.delete(data.targetUserId);
        } catch (err: any) {
           console.error("Trade Failed:", err.message);
           io.to(`user:${userId}`).emit("trade_complete", { success: false, error: err.message });
           io.to(`user:${data.targetUserId}`).emit("trade_complete", { success: false, error: err.message });
+          // ALSO CLEAR ON FAILURE
+          activeTrades.delete(userId);
+          activeTrades.delete(data.targetUserId);
        }
     });
 
     socket.on("disconnect", () => {
       console.log(`👤 User disconnected: ${userId}`);
+      const partnerId = activeTrades.get(userId);
+      if (partnerId) {
+         console.log(`🧹 [SYSTEM] Cleaning active trade for ${userId} (partner: ${partnerId})`);
+         activeTrades.delete(userId);
+         activeTrades.delete(partnerId);
+         io.to(`user:${partnerId}`).emit("trade_cancelled", { message: "Partner disconnected" });
+      }
+
       const count = onlineUsers.get(userId) || 1;
       if (count <= 1) {
         onlineUsers.delete(userId);

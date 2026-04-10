@@ -184,6 +184,7 @@ export async function gameRoutes(server: FastifyInstance) {
 
       // Reverse to show oldest first in UI
       const formatted = messages.reverse().map((m: any) => ({
+        id: m.id,
         userId: m.fromCharacter.userId,
         characterName: m.fromCharacter.name,
         message: m.content,
@@ -670,35 +671,6 @@ export async function gameRoutes(server: FastifyInstance) {
       return reply.send(result);
     } catch (e: any) {
       return reply.status(400).send({ error: e.message });
-    }
-  });
-
-  /**
-   * 📜 Get Trade History
-   */
-  server.get("/trades/history", async (request, reply) => {
-    const { characterId } = request.user as { characterId: string };
-
-    try {
-      const trades = await (prisma as any).tradeLog.findMany({
-        where: {
-          OR: [
-            { initiatorId: characterId },
-            { partnerId: characterId }
-          ]
-        },
-        orderBy: { timestamp: "desc" },
-        take: 50,
-        include: {
-           initiator: true,
-           partner: true
-        }
-      });
-
-      return reply.send({ trades });
-    } catch (err) {
-      server.log.error(err);
-      return reply.status(500).send({ error: "Failed to fetch trade history" });
     }
   });
 }
