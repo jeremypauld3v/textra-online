@@ -77,7 +77,7 @@ export async function authRoutes(server: FastifyInstance) {
         email: user.email 
       });
 
-      return reply.send({ token, characterId, message: "Login successful" });
+      return reply.send({ token, characterId, userId: user.id, message: "Login successful" });
     } catch (err: any) {
       server.log.error(err);
       return reply.status(500).send({ error: "Internal Server Error" });

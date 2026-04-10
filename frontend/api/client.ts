@@ -17,3 +17,17 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Intercept responses to handle auth failures globally
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // If the token is invalid (401) or the character was deleted on the server (404),
+    // automatically log the user out to bring them back to the login screen.
+    if (error.response?.status === 401 || error.response?.status === 404) {
+      console.warn("Auth Error Detected: Auto-logging out...");
+      useAuthStore.getState().logout();
+    }
+    return Promise.reject(error);
+  }
+);

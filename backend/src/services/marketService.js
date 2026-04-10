@@ -1,0 +1,170 @@
+import { prisma } from "../lib/prisma.js";
+/**
+ * 💰 MarketService
+ * Handles the global player-to-player economy.
+ */
+export class MarketService {
+    /**
+     * 📈 Get all active marketplace listings
+     */
+    async getListings() {
+        return await prisma.marketListing.findMany({
+            include: {
+                template: true,
+                seller: {
+                    select: { name: true }
+                }
+            },
+            orderBy: { createdAt: "desc" }
+        });
+    }
+    /**
+     * 🏷️ Create a new listing
+     * Moves items from inventory into the MarketListing.
+     */
+    async listItem(characterId, inventoryItemId, quantity, price) {
+        if (price <= 0 || quantity <= 0)
+            throw new Error("Invalid price or quantity");
+        // 1. Fetch character and inventory item
+        const invItem = await prisma.inventoryItem.findUnique({
+            where: { id: inventoryItemId },
+            include: { template: true }
+        });
+        if (!invItem || invItem.characterId !== characterId || invItem.quantity < quantity) {
+            throw new Error("Insufficient items in inventory");
+        }
+        // 2. Atomic Transaction: Remove from inventory, add to market
+        return await prisma.$transaction(async (tx) => {
+            if (invItem.quantity > quantity) {
+                await tx.inventoryItem.update({
+                    where: { id: inventoryItemId },
+                    data: { quantity: { decrement: quantity } }
+                });
+            }
+            else {
+                await tx.inventoryItem.delete({
+                    where: { id: inventoryItemId }
+                });
+            }
+            return await tx.marketListing.create({
+                data: {
+                    sellerId: characterId,
+                    itemCode: invItem.itemCode,
+                    quantity,
+                    price,
+                    rolledAtk: invItem.rolledAtk,
+                    rolledDef: invItem.rolledDef,
+                    rolledStr: invItem.rolledStr,
+                    rolledAgi: invItem.rolledAgi
+                }
+            });
+        });
+    }
+    /**
+     * 🛒 Buy an item from the marketplace
+     * Atomic swap of Gold and Items.
+     */
+    async buyItem(buyerId, listingId) {
+        // 1. Fetch listing and buyer
+        const listing = await prisma.marketListing.findUnique({
+            where: { id: listingId },
+            include: { seller: true }
+        });
+        if (!listing)
+            throw new Error("Listing no longer exists");
+        if (listing.sellerId === buyerId)
+            throw new Error("You cannot buy your own listing");
+        const buyer = await prisma.character.findUnique({ where: { id: buyerId } });
+        if (!buyer)
+            throw new Error("Buyer not found");
+        if (buyer.gold < listing.price) {
+            throw new Error("Insufficient gold");
+        }
+        // 2. Logic: Seller gets 95% (5% Tax)
+        const tax = Math.floor(listing.price * 0.05);
+        const sellerEarnings = listing.price - tax;
+        // 3. Execution (Atomic Transaction)
+        await prisma.$transaction(async (tx) => {
+            // Deduct Gold from Buyer
+            await tx.character.update({
+                where: { id: buyerId },
+                data: { gold: { decrement: listing.price } }
+            });
+            // Add Gold to Seller
+            await tx.character.update({
+                where: { id: listing.sellerId },
+                data: { gold: { increment: sellerEarnings } }
+            });
+            // Add Item to Buyer's Inventory
+            await tx.inventoryItem.upsert({
+                where: {
+                    characterId_itemCode: {
+                        characterId: buyerId,
+                        itemCode: listing.itemCode
+                    }
+                },
+                update: {
+                    quantity: { increment: listing.quantity },
+                    ...(listing.rolledAtk !== null && { rolledAtk: listing.rolledAtk }),
+                    ...(listing.rolledDef !== null && { rolledDef: listing.rolledDef }),
+                    ...(listing.rolledStr !== null && { rolledStr: listing.rolledStr }),
+                    ...(listing.rolledAgi !== null && { rolledAgi: listing.rolledAgi })
+                },
+                create: {
+                    characterId: buyerId,
+                    itemCode: listing.itemCode,
+                    quantity: listing.quantity,
+                    rolledAtk: listing.rolledAtk,
+                    rolledDef: listing.rolledDef,
+                    rolledStr: listing.rolledStr,
+                    rolledAgi: listing.rolledAgi
+                }
+            });
+            // Remove Listing
+            await tx.marketListing.delete({ where: { id: listingId } });
+        });
+        return { success: true, message: "Purchase complete!" };
+    }
+    /**
+     * ❌ Cancel a listing
+     * Returns item to the seller.
+     */
+    async cancelListing(characterId, listingId) {
+        const listing = await prisma.marketListing.findUnique({
+            where: { id: listingId }
+        });
+        if (!listing || listing.sellerId !== characterId) {
+            throw new Error("Listing not found or not yours");
+        }
+        await prisma.$transaction(async (tx) => {
+            await tx.inventoryItem.upsert({
+                where: {
+                    characterId_itemCode: {
+                        characterId: characterId,
+                        itemCode: listing.itemCode
+                    }
+                },
+                update: {
+                    quantity: { increment: listing.quantity },
+                    ...(listing.rolledAtk !== null && { rolledAtk: listing.rolledAtk }),
+                    ...(listing.rolledDef !== null && { rolledDef: listing.rolledDef }),
+                    ...(listing.rolledStr !== null && { rolledStr: listing.rolledStr }),
+                    ...(listing.rolledAgi !== null && { rolledAgi: listing.rolledAgi })
+                },
+                create: {
+                    characterId: characterId,
+                    itemCode: listing.itemCode,
+                    quantity: listing.quantity,
+                    rolledAtk: listing.rolledAtk,
+                    rolledDef: listing.rolledDef,
+                    rolledStr: listing.rolledStr,
+                    rolledAgi: listing.rolledAgi
+                }
+            });
+            await tx.marketListing.delete({ where: { id: listingId } });
+        });
+        return { success: true, message: "Listing cancelled and item returned" };
+    }
+}
+export const marketService = new MarketService();
+//# sourceMappingURL=marketService.js.map

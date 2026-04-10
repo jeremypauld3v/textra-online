@@ -7,35 +7,219 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id         String      @id @default(uuid())
+  email      String      @unique
+  password   String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
   characters Character[]
 }
 
 model Character {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  level     Int      @default(1)
-  exp       Int      @default(0)
-  
-  // Stats
-  str       Int      @default(5)
-  agi       Int      @default(5)
-  dex       Int      @default(5)
-  luk       Int      @default(5)
-  int       Int      @default(5)
+  id               String          @id @default(uuid())
+  name             String          @unique
+  level            Int             @default(1)
+  exp              Int             @default(0)
+  str              Int             @default(5)
+  agi              Int             @default(5)
+  dex              Int             @default(5)
+  luk              Int             @default(5)
+  int              Int             @default(5)
+  energy           Int             @default(100)
+  maxEnergy        Int             @default(100)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  userId           String
+  actionStatus     String          @default("IDLE")
+  hp               Int             @default(100)
+  maxHp            Int             @default(100)
+  lastPulseAt      DateTime?       @default(now())
+  pendingEncounter Json?
+  previousStatus   String?
+  statPoints       Int             @default(0)
+  currentPath      Json?
+  currentDepth     Int             @default(0)
+  dungeonData      Json?
+  dungeonProgress  Int?
+  equippedBootsId  String?
+  equippedChestId  String?
+  equippedHelmetId String?
+  equippedWeaponId String?
+  gold             Int             @default(100)
+  battleLogs       BattleLog[]
+  user             User            @relation(fields: [userId], references: [id])
+  inventory        InventoryItem[]
+  marketListings   MarketListing[]
+  friends          Friendship[]    @relation("CharacterFriends")
+  friendOf         Friendship[]    @relation("FriendOfCharacter")
+  sentMessages     ChatMessage[]   @relation("SentMessages")
+  receivedMessages ChatMessage[]   @relation("ReceivedMessages")
+  initiatedTrades  TradeLog[]      @relation("InitiatedTrades")
+  partneredTrades  TradeLog[]      @relation("PartneredTrades")
+}
 
-  // Energy System (For anti-botting / travel)
-  energy    Int      @default(100)
-  maxEnergy Int      @default(100)
+model Friendship {
+  id          String    @id @default(uuid())
+  characterId String
+  friendId    String
+  createdAt   DateTime  @default(now())
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  character Character @relation("CharacterFriends", fields: [characterId], references: [id])
+  friend    Character @relation("FriendOfCharacter", fields: [friendId], references: [id])
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  @@unique([characterId, friendId])
+}
+
+model ChatMessage {
+  id              String   @id @default(uuid())
+  type            String   // "WORLD" or "PRIVATE"
+  content         String
+  fromCharacterId String
+  toCharacterId   String?  // null for WORLD
+  timestamp       DateTime @default(now())
+
+  fromCharacter Character  @relation("SentMessages", fields: [fromCharacterId], references: [id])
+  toCharacter   Character? @relation("ReceivedMessages", fields: [toCharacterId], references: [id])
+
+  @@index([timestamp])
+  @@index([type, timestamp])
+}
+
+model TradeLog {
+  id              String   @id @default(uuid())
+  initiatorId     String
+  partnerId       String
+  initiatorOffer  Json     // { items: { itemCode, quantity, name }[], gold: number }
+  partnerOffer    Json     // { items: { itemCode, quantity, name }[], gold: number }
+  timestamp       DateTime @default(now())
+
+  initiator Character @relation("InitiatedTrades", fields: [initiatorId], references: [id])
+  partner   Character @relation("PartneredTrades", fields: [partnerId], references: [id])
+
+  @@index([initiatorId])
+  @@index([partnerId])
+  @@index([timestamp])
+}
+
+model InventoryItem {
+  id          String       @id @default(uuid())
+  characterId String
+  itemCode    String
+  quantity    Int          @default(1)
+  rolledAtk   Int?
+  rolledDef   Int?
+  rolledStr   Int?
+  rolledAgi   Int?
+  character   Character    @relation(fields: [characterId], references: [id])
+  template    ItemTemplate @relation(fields: [itemCode], references: [code])
+}
+
+model BattleLog {
+  id          String    @id @default(uuid())
+  characterId String
+  enemyName   String
+  logDetails  Json
+  isWin       Boolean
+  expGained   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  character   Character @relation(fields: [characterId], references: [id])
+}
+
+model ItemTemplate {
+  code           String             @id
+  name           String
+  emoji          String
+  rarity         String
+  type           String
+  description    String
+  statAtk        Int?               @default(0)
+  statDef        Int?               @default(0)
+  statStr        Int?               @default(0)
+  statAgi        Int?               @default(0)
+  statHeal       Int?               @default(0)
+  statEnergy     Int?               @default(0)
+  levelReq       Int                @default(1)
+  equipSlot      String?
+  recipes        CraftingRecipe[]
+  inventoryItems InventoryItem[]
+  lootTables     LootTable[]
+  marketListings MarketListing[]
+  ingredients    RecipeIngredient[]
+}
+
+model MonsterTemplate {
+  id        String      @id @default(uuid())
+  name      String      @unique
+  hp        Int
+  attack    Int
+  defense   Int
+  expReward Int
+  lootTable LootTable[]
+}
+
+model LootTable {
+  id                String          @id @default(uuid())
+  monsterTemplateId String
+  itemCode          String
+  chance            Float
+  item              ItemTemplate    @relation(fields: [itemCode], references: [code])
+  monster           MonsterTemplate @relation(fields: [monsterTemplateId], references: [id])
+}
+
+model CraftingRecipe {
+  id             String             @id @default(uuid())
+  resultItemCode String
+  levelReq       Int                @default(1)
+  resultItem     ItemTemplate       @relation(fields: [resultItemCode], references: [code])
+  ingredients    RecipeIngredient[]
+}
+
+model RecipeIngredient {
+  id       String         @id @default(uuid())
+  recipeId String
+  itemCode String
+  quantity Int
+  item     ItemTemplate   @relation(fields: [itemCode], references: [code])
+  recipe   CraftingRecipe @relation(fields: [recipeId], references: [id])
+}
+
+model MarketListing {
+  id        String       @id @default(uuid())
+  sellerId  String
+  itemCode  String
+  quantity  Int          @default(1)
+  price     Int
+  rolledAtk Int?
+  rolledDef Int?
+  rolledStr Int?
+  rolledAgi Int?
+  createdAt DateTime     @default(now())
+  template  ItemTemplate @relation(fields: [itemCode], references: [code])
+  seller    Character    @relation(fields: [sellerId], references: [id])
+}
+
+model DungeonTemplate {
+  id             String  @id @default(uuid())
+  name           String  @unique
+  description    String
+  minDepth       Int     @default(0)
+  minLevel       Int     @default(1)
+  floorCount     Int     @default(3)
+  bossName       String
+  bossHp         Int
+  bossAttack     Int
+  bossDefense    Int
+  bossExpReward  Int
+  treasureChance Float   @default(0.3)
+  lootItemCode   String?
+}
+
+model ResourceNodeTemplate {
+  id       String @id @default(uuid())
+  name     String @unique
+  type     String
+  icon     String
+  itemCode String
+  baseHp   Int    @default(20)
+  xpReward Int    @default(5)
 }

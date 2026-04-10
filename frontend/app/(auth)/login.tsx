@@ -22,7 +22,7 @@ export default function LoginScreen() {
       const data = await authApi.login(validatedData);
       
       // 3. Success State
-      login(data.token, data.characterId);
+      login(data.token, data.characterId, data.userId);
       router.replace("/(tabs)/adventure");
     } catch (err: any) {
       if (err.name === "ZodError") {

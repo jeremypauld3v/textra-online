@@ -1,0 +1,201 @@
+import { apiClient } from "./client";
+
+export interface BattleLogPayload {
+  id: string;
+  enemyName: string;
+  isWin: boolean;
+  expGained: number;
+  logDetails: {
+    turn: number;
+    attacker: string;
+    damage: number;
+    message: string;
+  }[];
+  createdAt: string;
+}
+
+export interface CharacterStatus {
+  id: string;
+  name: string;
+  level: number;
+  exp: number;
+  hp: number;
+  maxHp: number;
+  currentDepth: number;
+  locationName: string;
+  isSafe: boolean;
+  rankName: string;
+  dangerLevel: string;
+  expBonus: number;
+  lootBonus: number;
+  actionStatus: string;
+  previousStatus?: string | null;
+  pendingEncounter?: {
+    type: "PVE" | "GATHERING" | "PVP" | "DUNGEON";
+    name: string;
+    hp?: number;
+    maxHp?: number;
+    amount?: number;
+    [key: string]: any;
+  } | null;
+  lastPulseAt?: string | null;
+  str: number;
+  agi: number;
+  dex: number;
+  luk: number;
+  int: number;
+  statPoints: number;
+  energy: number;
+  maxEnergy: number;
+  gold: number;
+  // Gear Boosted Stats
+  atk: number;
+  def: number;
+  equippedWeapon?: { id: string; template: any } | null;
+  equippedChest?: { id: string; template: any } | null;
+  equippedHelmet?: { id: string; template: any } | null;
+  equippedBoots?: { id: string; template: any } | null;
+  dungeonState?: any;
+}
+
+export interface InventoryItem {
+  id: string;
+  characterId: string;
+  itemCode: string;
+  quantity: number;
+  rolledAtk?: number | null;
+  rolledDef?: number | null;
+  rolledStr?: number | null;
+  rolledAgi?: number | null;
+}
+
+export const gameApi = {
+  getStatus: async () => {
+    const response = await apiClient.get<{
+      character: CharacterStatus;
+      latestBattles: BattleLogPayload[];
+    }>("/game/status");
+    return response.data;
+  },
+
+  getInventory: async () => {
+    const response = await apiClient.get<{
+      inventory: InventoryItem[];
+      equipment: {
+        equippedWeaponId: string | null;
+        equippedChestId: string | null;
+        equippedHelmetId: string | null;
+        equippedBootsId: string | null;
+      };
+    }>("/game/inventory");
+    return response.data;
+  },
+
+  getMetadata: async () => {
+    const response = await apiClient.get<{
+      items: any[];
+      zones: any[];
+    }>("/game/metadata");
+    return response.data;
+  },
+
+  travel: async (direction: "OUT" | "IN" | "CAMP") => {
+    const response = await apiClient.post<{
+      success: boolean;
+      message: string;
+      status: string;
+    }>("/game/travel", { direction });
+    return response.data;
+  },
+
+  resolveEncounter: async (action: "attack" | "skip" | "gather" | "enter_dungeon") => {
+    const response = await apiClient.post<any>("/game/resolve-encounter", { action });
+    return response.data;
+  },
+
+  dungeonFight: async () => {
+    const response = await apiClient.post<any>("/game/dungeon/fight");
+    return response.data;
+  },
+
+  allocateStat: async (stat: "str" | "agi" | "dex" | "luk" | "int") => {
+    const response = await apiClient.post<{ success: boolean; character: CharacterStatus }>("/game/stats/allocate", { stat });
+    return response.data;
+  },
+  
+  equip: async (inventoryItemId: string) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/equip", { inventoryItemId });
+    return response.data;
+  },
+
+  unequip: async (slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS") => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/unequip", { slot });
+    return response.data;
+  },
+
+  getTradeHistory: async () => {
+    const response = await apiClient.get<{ trades: any[] }>("/game/trades/history");
+    return response.data;
+  },
+
+  useItem: async (inventoryItemId: string) => {
+    const response = await apiClient.post<{ 
+      success: boolean; 
+      healed: number; 
+      energyRestored: number;
+      newHp: number;
+      newEnergy: number;
+    }>("/game/use-item", { inventoryItemId });
+    return response.data;
+  },
+
+  getRecipes: async () => {
+    const response = await apiClient.get<{ recipes: any[] }>("/game/recipes");
+    return response.data;
+  },
+
+  craft: async (recipeId: string) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/craft", { recipeId });
+    return response.data;
+  },
+
+  getMarket: async () => {
+    const response = await apiClient.get<{ listings: any[] }>("/game/market");
+    return response.data;
+  },
+
+  listItem: async (inventoryItemId: string, quantity: number, price: number) => {
+    const response = await apiClient.post<{ success: boolean; listing: any }>("/game/market/list", { inventoryItemId, quantity, price });
+    return response.data;
+  },
+
+  buyItem: async (listingId: string) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/market/buy", { listingId });
+    return response.data;
+  },
+
+  cancelListing: async (listingId: string) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/market/cancel", { listingId });
+    return response.data;
+  },
+  
+  getFriends: async () => {
+    const response = await apiClient.get<{ friends: any[] }>("/game/friends");
+    return response.data;
+  },
+
+  addFriend: async (targetName: string) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/friends/add", { targetName });
+    return response.data;
+  },
+
+  getWorldChatHistory: async () => {
+    const response = await apiClient.get<{ messages: any[] }>("/game/chat/world");
+    return response.data;
+  },
+
+  getPrivateChatHistory: async (targetUserId: string) => {
+    const response = await apiClient.get<{ messages: any[] }>(`/game/chat/private/${targetUserId}`);
+    return response.data;
+  }
+};

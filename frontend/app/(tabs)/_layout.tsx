@@ -63,6 +63,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="crafting"
+        options={{
+          title: "Forge",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="hammer-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="social"
         options={{
           title: "Social",
