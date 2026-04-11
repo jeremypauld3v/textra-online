@@ -28,7 +28,7 @@ interface PrivateMessage {
 }
 
 export default function SocialScreen() {
-  const { socket, connected, onlineUserIds, requestTrade, showAlert, hideAlert } = useSocket();
+  const { socket, connected, onlineUserIds, requestTrade, showAlert, hideAlert, hasPendingRequest } = useSocket();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [targetIGN, setTargetIGN] = useState("");
@@ -254,10 +254,11 @@ export default function SocialScreen() {
                       setSelectedUser(null);
                    }
                 }}
-                className="bg-emerald-500/20 py-4 rounded-2xl flex-row items-center justify-center border border-emerald-500/30"
+                disabled={hasPendingRequest}
+                className={`py-4 rounded-2xl flex-row items-center justify-center border ${hasPendingRequest ? 'bg-slate-800/50 border-slate-700 opacity-40' : 'bg-emerald-500/20 border-emerald-500/30'}`}
               >
                 <Ionicons name="swap-horizontal" size={20} color="#10b981" className="mr-3" />
-                <Text className="text-emerald-400 font-bold ml-2">Request Trade</Text>
+                <Text className="text-emerald-400 font-bold ml-2">{hasPendingRequest ? 'Request Pending...' : 'Request Trade'}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -334,7 +335,8 @@ export default function SocialScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity 
                       onPress={() => requestTrade(item.userId)}
-                      className="bg-slate-800 w-12 h-12 rounded-2xl justify-center items-center"
+                      disabled={hasPendingRequest}
+                      className={`w-12 h-12 rounded-2xl justify-center items-center ${hasPendingRequest ? 'bg-slate-700 opacity-40' : 'bg-slate-800'}`}
                     >
                       <Ionicons name="swap-horizontal" size={20} color="#10b981" />
                     </TouchableOpacity>

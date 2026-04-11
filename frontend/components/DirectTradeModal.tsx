@@ -50,7 +50,7 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
   }, []);
 
   const handleManualClose = useCallback(() => {
-     if (socket) {
+     if (socket && targetUserId) {
         console.log(`📡 [TRADE] Emitting cancel to ${targetUserId}`);
         socket.emit("trade_cancel", { targetUserId });
      }
@@ -58,12 +58,11 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
   }, [socket, targetUserId, onClose]);
 
   useEffect(() => {
-    if (visible) {
+    if (visible && targetUserId) {
        console.log(`✨ [TRADE] Opening Trade with ${targetUserId}`);
        fetchInventory();
-    } else {
+    } else if (!visible) {
        // 🧹 SANITIZE STATE ON CLOSE
-       console.log(`🧹 [TRADE] Cleaning up session with ${targetUserId}`);
        setMyItems([]);
        setMyGold(0);
        setMyLocked(false);
@@ -173,7 +172,7 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false}>
+    <Modal visible={visible} animationType="fade" transparent={false}>
       <View className="flex-1 bg-slate-950 pt-20 px-6">
         <View className="flex-row justify-between items-center mb-6">
             <View>

@@ -16,24 +16,29 @@ import { getIO } from "../socket.js";
  * ⚔️ REAL-TIME PVP MATCHMAKING
  */
 async function rollPvPEncounter(characterId: string, depth: number) {
-  if (depth < 200) return null; // Safe Zone check
+  if (depth < 200) return null; // Attacker must be in danger zone
 
-  // Search Redis for nearby players (+/- 10km)
-  const nearbyIds = await connection.zrangebyscore("players_depth", depth - 10, depth + 10);
+  // Search Redis for nearby players (+/- 50km)
+  const nearbyIds = await connection.zrangebyscore("players_depth", depth - 50, depth + 50);
   
-  // Filter out self and pick a random target
   const targets = nearbyIds.filter(id => id !== characterId);
   if (targets.length === 0) return null;
 
   const targetId = targets[Math.floor(Math.random() * targets.length)];
   
-  // Fetch target details from DB
   const targetChar = await prisma.character.findUnique({
     where: { id: targetId as string },
-    select: { id: true, name: true, hp: true, maxHp: true, level: true, userId: true }
+    select: { id: true, name: true, hp: true, maxHp: true, level: true, userId: true, actionStatus: true, pendingEncounter: true, currentDepth: true }
   });
 
-  if (!targetChar || targetChar.hp <= 0) return null;
+  // Target must ALSO be in danger zone (>= 200km), not in encounter, and have no pending encounter
+  if (
+    !targetChar ||
+    targetChar.hp <= 0 ||
+    targetChar.actionStatus === "ENCOUNTER" ||
+    targetChar.pendingEncounter !== null ||
+    targetChar.currentDepth < 200  // ← safe zone protection
+  ) return null;
 
   return {
     type: "PVP",
@@ -106,27 +111,28 @@ export const travelWorker = new Worker(
       console.log(`[REGEN] ${character.name} healed to full in Valoria City`);
     }
 
-    // 1. Check for PVP Encounter (If in Danger Zone)
-    if (character.currentDepth >= 200 && (character.actionStatus === "TRAVELING_OUT" || character.actionStatus === "TRAVELING_IN")) {
+    // 1. Check for PVP Encounter (If in Danger Zone — 5% chance per pulse to keep it rare)
+    const PVP_CHANCE = 0.05;
+    if (
+      character.currentDepth >= 200 &&
+      Math.random() < PVP_CHANCE &&
+      (character.actionStatus === "TRAVELING_OUT" || character.actionStatus === "TRAVELING_IN")
+    ) {
        const pvpEncounter = await rollPvPEncounter(characterId, character.currentDepth);
        if (pvpEncounter) {
-          console.log(`⚔️ PvP AMBUSH: ${character.name} vs ${pvpEncounter.name}`);
+          console.log(`⚔️ PvP AMBUSH: ${character.name} spotted ${pvpEncounter.name}`);
           
+          // ONLY Player 2 (the one who triggered the encounter) gets the PVP modal.
+          // Player 1 is left untouched — they keep traveling until Player 2 presses "Attack",
+          // which then sends PVP_INCOMING to Player 1 via the game route.
           await prisma.character.update({
              where: { id: characterId },
              data: { actionStatus: "ENCOUNTER", pendingEncounter: pvpEncounter as any, previousStatus: character.actionStatus }
           });
 
-          // Also set target to encounter state
-          await prisma.character.update({
-             where: { id: pvpEncounter.targetId },
-             data: { actionStatus: "ENCOUNTER", pendingEncounter: { type: "PVP", name: character.name, targetId: characterId, targetUserId: character.userId, hp: character.hp, maxHp: character.maxHp }, previousStatus: "IDLE" }
-          });
-
-          // Notify Both via Sockets
+          // Notify ONLY Player 2 (the initiator) — Player 1 finds out when attacked
           const io = getIO();
           io.to(`user:${character.userId}`).emit("pvp_ambush", pvpEncounter);
-          io.to(`user:${pvpEncounter.targetUserId}`).emit("pvp_ambush", { type: "PVP", name: character.name, targetId: characterId, targetUserId: character.userId, hp: character.hp, maxHp: character.maxHp });
 
           return { success: true, encounterFound: true, type: "PVP" };
        }

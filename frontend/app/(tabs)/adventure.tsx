@@ -1,35 +1,35 @@
 import { View, Text, TouchableOpacity, Modal, ActivityIndicator, Alert, FlatList } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useFocusEffect } from "expo-router";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useFocusEffect, useRouter, usePathname } from "expo-router";
 import { gameApi, CharacterStatus, BattleLogPayload } from "../../api/game";
 import Toast from "react-native-toast-message";
 import { useAuthStore } from "../../store/useAuthStore";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from "react-native-reanimated";
-
 import { useGameStore } from "../../store/useGameStore";
 import { useSocket } from "../../context/SocketContext";
-
-const AFK_TIMEOUT = 10; // 10 seconds to act or skip
+import { useEncounterStore } from "../../store/useEncounterStore";
 
 export default function AdventureScreen() {
   const isMetadataLoaded = useGameStore((state) => state.isMetadataLoaded);
   const [character, setCharacter] = useState<CharacterStatus | null>(null);
   const [battleLogs, setBattleLogs] = useState<BattleLogPayload[]>([]);
-  const [isResolving, setIsResolving] = useState(false);
   const [nearbyCount, setNearbyCount] = useState(0);
   const { socket } = useSocket();
   const [journalVisible, setJournalVisible] = useState(false);
-  const [countdown, setCountdown] = useState(AFK_TIMEOUT);
-  
-  // Battle Simulation State
-  const [simBattle, setSimBattle] = useState<any>(null);
-  const [simTurn, setSimTurn] = useState(0);
+  const setSimBattle = useEncounterStore((s) => s.setSimBattle);
+  const [isResolving, setIsResolving] = useState(false);
+  const [countdown, setCountdown] = useState(30);
+  const timerActiveRef = useRef<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // 🔄 Fetch Status
 
   // 🎭 Reanimated Values
   const translateY = useSharedValue(0);
 
-  // 🔄 Fetch Status
   const fetchStatus = useCallback(async () => {
     const token = useAuthStore.getState().token;
     if (!token) return;
@@ -50,15 +50,38 @@ export default function AdventureScreen() {
       socket.on("zone_update", (data: { nearbyCount: number }) => {
         setNearbyCount(data.nearbyCount);
       });
-      socket.on("pvp_ambush", (data: any) => {
-        fetchStatus(); // Force refresh to show ambush modal
+      // Encounter popup handled inline — just refresh status
+      socket.on("pvp_ambush", fetchStatus);
+      socket.on("pvp_incoming", fetchStatus);
+      // Battle result → set simBattle + navigate to battle screen
+      socket.on("pvp_battle_start", (data: any) => {
+        setSimBattle({
+          log: data.log,
+          startPlayerHp: data.startPlayerHp,
+          startMaxPlayerHp: data.startMaxPlayerHp,
+          startEnemyHp: data.startEnemyHp,
+          startMaxEnemyHp: data.startMaxEnemyHp,
+          playerName: data.playerName,
+          enemyName: data.enemyName,
+          isPvp: true,
+          isWin: data.isWin,
+          goldStolen: data.goldStolen,
+        });
+        if (pathname !== '/encounter') router.push('/encounter');
+      });
+      socket.on("pvp_fled", (data: any) => {
+        Toast.show({ type: 'info', text1: '⚡ Escaped!', text2: data.message || 'Target fled!' });
+        fetchStatus();
       });
     }
     return () => {
       socket?.off("zone_update");
       socket?.off("pvp_ambush");
+      socket?.off("pvp_incoming");
+      socket?.off("pvp_battle_start");
+      socket?.off("pvp_fled");
     };
-  }, [socket, fetchStatus]);
+  }, [socket, fetchStatus, router, pathname, setSimBattle]);
 
   useFocusEffect(
     useCallback(() => {
@@ -97,57 +120,81 @@ export default function AdventureScreen() {
     };
   }, [translateY]);
 
+
+  // ── Encounter resolve — handles all types inline ─────────────────────────
   const resolveEncounter = useCallback(async (action: "attack" | "skip" | "gather" | "enter_dungeon") => {
     if (isResolving) return;
     try {
       setIsResolving(true);
-      const prevCharacter = character;
+      const prevEncounter = character?.pendingEncounter as any;
+      const prevChar = character;
       const result = await gameApi.resolveEncounter(action);
-      
-      if (character && result.updatedChar && result.updatedChar.level > character.level) {
+
+      if (prevChar && result.updatedChar && result.updatedChar.level > prevChar.level) {
         Toast.show({ type: 'success', text1: '✨ LEVEL UP!', text2: `Level ${result.updatedChar.level} reached!`, visibilityTime: 3000 });
       }
 
-      if ((action === "attack" || action === "gather") && result.log) {
-        setSimBattle({
-           ...result,
-           isGathering: action === "gather",
-           startPlayerHp: prevCharacter?.hp || 100,
-           startMaxPlayerHp: prevCharacter?.maxHp || 100,
-           startEnemyHp: action === "gather" ? (result.startIntegrity || 20) : (prevCharacter?.pendingEncounter?.hp || 50),
-           startMaxEnemyHp: action === "gather" ? (result.startIntegrity || 20) : (prevCharacter?.pendingEncounter?.maxHp || 50),
-        });
-        setSimTurn(0);
-      } else {
-        fetchStatus();
+      // PVP Step 1: P2 attacked → show PVP_WAITING
+      if (action === "attack" && prevEncounter?.type === "PVP") {
+        fetchStatus(); return;
       }
-    } catch {
-       Alert.alert("Error", "Failed to resolve encounter");
-    } finally {
-       setIsResolving(false);
-    }
-  }, [character, isResolving, fetchStatus]);
 
-  // ⏳ AFK Timer Logic
-  const encounterId = character?.pendingEncounter ? JSON.stringify(character.pendingEncounter) : null;
-  
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval>;
-    if (character?.pendingEncounter) {
-      setCountdown(AFK_TIMEOUT); 
-      timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            resolveEncounter("skip");
-            return 0;
-          }
-          return prev - 1;
+      // PVP Step 2 / PVE / Gathering → battle animation
+      if ((action === "attack" || action === "gather") && result.log) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerActiveRef.current = null;
+        setSimBattle({
+          ...result,
+          isGathering: action === "gather",
+          startPlayerHp: action === "attack" && (prevEncounter?.type === "PVP_INCOMING" || prevEncounter?.type === "PVP_WAITING")
+            ? result.startPlayerHp
+            : (prevChar?.hp || 100),
+          startMaxPlayerHp: action === "attack" && (prevEncounter?.type === "PVP_INCOMING" || prevEncounter?.type === "PVP_WAITING")
+            ? result.startMaxPlayerHp
+            : (prevChar?.maxHp || 100),
+          startEnemyHp: action === "gather" ? (result.startIntegrity || 20) : (result.startEnemyHp || prevEncounter?.hp || 50),
+          startMaxEnemyHp: action === "gather" ? (result.startIntegrity || 20) : (result.startMaxEnemyHp || prevEncounter?.maxHp || 50),
+          playerName: result.playerName,
+          enemyName: result.enemyName,
+          isPvp: prevEncounter?.type === "PVP_INCOMING" || prevEncounter?.type === "PVP_WAITING",
+          isWin: result.isWin,
+          goldStolen: result.goldStolen,
         });
-      }, 1000);
+        router.push('/encounter');
+        return;
+      }
+
+      fetchStatus();
+    } catch {
+      Alert.alert("Error", "Failed to resolve encounter");
+    } finally {
+      setIsResolving(false);
     }
-    return () => clearInterval(timer);
-  }, [encounterId, resolveEncounter, character?.pendingEncounter]);
+  }, [character, isResolving, fetchStatus, router, setSimBattle]);
+
+  // ── Encounter AFK Timer — stable key prevents restarts ───────────────────
+  const enc = character?.pendingEncounter as any;
+  const encounterKey = enc ? `${enc.type}::${enc.name ?? ''}::${enc.targetId ?? ''}` : null;
+
+  useEffect(() => {
+    if (!encounterKey) { timerActiveRef.current = null; return; }
+    if (timerActiveRef.current === encounterKey) return;
+    timerActiveRef.current = encounterKey;
+    setCountdown(30);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          const encType = (character?.pendingEncounter as any)?.type;
+          resolveEncounter(encType === "PVP_WAITING" ? "attack" : "skip");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [encounterKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [isProcessingDirection, setIsProcessingDirection] = useState(false);
 
@@ -164,33 +211,6 @@ export default function AdventureScreen() {
     }
   };
 
-  const combatSimulation = useMemo(() => {
-    if (!simBattle) return null;
-    let currentP = simBattle.startPlayerHp;
-    let currentE = simBattle.startEnemyHp;
-    for (let i = 0; i <= simTurn; i++) {
-       const turn = simBattle.log.logDetails[i];
-       if (!turn) break;
-       if (turn.attacker === "Player") currentE = Math.max(0, currentE - turn.damage);
-       else currentP = Math.max(0, currentP - turn.damage);
-    }
-    return {
-       playerHpPercent: (currentP / simBattle.startMaxPlayerHp) * 100,
-       enemyHpPercent: (currentE / simBattle.startMaxEnemyHp) * 100,
-       playerHp: currentP,
-       enemyHp: currentE
-    };
-  }, [simBattle, simTurn]);
-
-  useEffect(() => {
-    if (simBattle && simTurn < simBattle.log.logDetails.length - 1) {
-      const t = setTimeout(() => setSimTurn(v => v + 1), 1200);
-      return () => clearTimeout(t);
-    } else if (simBattle && simTurn === simBattle.log.logDetails.length - 1) {
-       const t = setTimeout(() => { setSimBattle(null); setSimTurn(0); fetchStatus(); }, 2500);
-       return () => clearTimeout(t);
-    }
-  }, [simBattle, simTurn, fetchStatus]);
 
   if (!isMetadataLoaded || !character) {
     return (
@@ -299,7 +319,7 @@ export default function AdventureScreen() {
                        const result = await gameApi.dungeonFight();
                        if (result.type === "COMBAT") {
                           setSimBattle({ ...result, startPlayerHp: dungeon.hp, startMaxPlayerHp: dungeon.maxHp, startEnemyHp: dungeon.currentFloor.maxHp, startMaxEnemyHp: dungeon.currentFloor.maxHp });
-                          setSimTurn(0);
+                          router.push('/encounter');
                        } else if (result.type === "TREASURE") {
                           Toast.show({ type: 'success', text1: 'Loot Found!', text2: result.message });
                           fetchStatus();
@@ -399,100 +419,83 @@ export default function AdventureScreen() {
             </View>
          </View>
       </Modal>
-
-      {/* ⚠️ ENCOUNTER AMBUSH MODAL */}
+      {/* ⚔️ ENCOUNTER MODAL (decision only — battle plays on /encounter screen) */}
       {character.pendingEncounter && (
         <Modal transparent animationType="fade">
-           <View className="flex-1 bg-slate-950/90 justify-center items-center px-6">
-              <View className="bg-slate-900 border border-indigo-500/30 p-8 rounded-[40px] w-full shadow-2xl overflow-hidden">
-                 <View className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-800">
-                    <View className="h-full bg-amber-500" style={{ width: `${(countdown / AFK_TIMEOUT) * 100}%` }} />
-                 </View>
+          <View className="flex-1 bg-slate-950/90 justify-center items-center px-6">
+            <View className="bg-slate-900 border border-indigo-500/30 p-8 rounded-[40px] w-full shadow-2xl overflow-hidden">
+              {/* Countdown bar */}
+              <View className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-800">
+                <View className="h-full bg-amber-500" style={{ width: `${(countdown / 30) * 100}%` }} />
+              </View>
 
-                 <View className="items-center mb-6">
-                    <Text className="text-indigo-400 font-bold uppercase tracking-widest text-[10px] mb-2">Ambush! Auto-skip in {countdown}s</Text>
-                    <Text className="text-3xl font-black text-white italic uppercase text-center">{character.pendingEncounter.name}</Text>
-                 </View>
+              <View className="items-center mb-6">
+                {enc?.type === 'PVP_INCOMING' ? (
+                  <Text className="text-rose-400 font-bold uppercase tracking-widest text-[10px] mb-2">⚔️ You&apos;ve been attacked!</Text>
+                ) : enc?.type === 'PVP_WAITING' ? (
+                  <Text className="text-amber-400 font-bold uppercase tracking-widest text-[10px] mb-2">⏳ Awaiting response... ({countdown}s)</Text>
+                ) : enc?.type === 'PVP' ? (
+                  <Text className="text-orange-400 font-bold uppercase tracking-widest text-[10px] mb-2">⚠️ AMBUSH! {countdown}s to decide</Text>
+                ) : (
+                  <Text className="text-indigo-400 font-bold uppercase tracking-widest text-[10px] mb-2">ENCOUNTER! Skip in {countdown}s</Text>
+                )}
+                <Text className="text-3xl font-black text-white italic uppercase text-center">{enc?.name}</Text>
+                {(enc?.type === 'PVP' || enc?.type === 'PVP_INCOMING') && (
+                  <Text className="text-slate-400 text-xs mt-1">Lv.{enc?.level} · {enc?.hp} HP</Text>
+                )}
+              </View>
 
-                  <View className="space-y-3">
-                    {character.pendingEncounter.type === "DUNGEON" ? (
-                      <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("enter_dungeon")} className="bg-fuchsia-600 p-5 rounded-3xl flex-row justify-center items-center shadow-lg shadow-fuchsia-500/30">
-                         <Ionicons name="skull-outline" size={20} color="white" />
-                         <Text className="text-white font-black uppercase tracking-widest ml-3">Delve Dungeon</Text>
-                      </TouchableOpacity>
-                    ) : character.pendingEncounter.type === "GATHERING" ? (
-                      <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("gather")} className="bg-emerald-600 p-5 rounded-3xl flex-row justify-center items-center">
-                         <Ionicons name="leaf-outline" size={20} color="white" />
-                         <Text className="text-white font-black uppercase tracking-widest ml-3">Gather</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("attack")} className={`p-5 rounded-3xl flex-row justify-center items-center ${character.pendingEncounter.type === 'PVP' ? 'bg-orange-600' : 'bg-rose-600'}`}>
-                         <Ionicons name={character.pendingEncounter.type === 'PVP' ? "flash-outline" : "bonfire-outline"} size={20} color="white" />
-                         <Text className="text-white font-black uppercase tracking-widest ml-3">
-                            {character.pendingEncounter.type === 'PVP' ? "Duel Player" : "Fight"}
-                         </Text>
-                      </TouchableOpacity>
-                    )}
-
-                    <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("skip")} className="bg-slate-800 p-5 rounded-3xl justify-center items-center mt-3">
-                       <Text className="text-slate-400 font-black uppercase tracking-widest">
-                          {character.pendingEncounter.type === 'PVP' ? "Attempt Escape" : "Bypass"}
-                       </Text>
-                    </TouchableOpacity>
+              <View className="space-y-3">
+                {enc?.type === "DUNGEON" && (
+                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("enter_dungeon")} className="bg-fuchsia-600 p-5 rounded-3xl flex-row justify-center items-center">
+                    <Ionicons name="skull-outline" size={20} color="white" />
+                    <Text className="text-white font-black uppercase tracking-widest ml-3">Delve Dungeon</Text>
+                  </TouchableOpacity>
+                )}
+                {enc?.type === "GATHERING" && (
+                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("gather")} className="bg-emerald-600 p-5 rounded-3xl flex-row justify-center items-center">
+                    <Ionicons name="leaf-outline" size={20} color="white" />
+                    <Text className="text-white font-black uppercase tracking-widest ml-3">Gather</Text>
+                  </TouchableOpacity>
+                )}
+                {enc?.type === "PVE" && (
+                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("attack")} className="bg-rose-600 p-5 rounded-3xl flex-row justify-center items-center">
+                    <Ionicons name="bonfire-outline" size={20} color="white" />
+                    <Text className="text-white font-black uppercase tracking-widest ml-3">Fight</Text>
+                  </TouchableOpacity>
+                )}
+                {enc?.type === "PVP" && (
+                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("attack")} className="bg-orange-600 p-5 rounded-3xl flex-row justify-center items-center">
+                    <Ionicons name="flash-outline" size={20} color="white" />
+                    <Text className="text-white font-black uppercase tracking-widest ml-3">⚔️ Attack</Text>
+                  </TouchableOpacity>
+                )}
+                {enc?.type === "PVP_INCOMING" && (
+                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("attack")} className="bg-rose-700 p-5 rounded-3xl flex-row justify-center items-center border border-rose-500/50">
+                    <Ionicons name="shield-outline" size={20} color="white" />
+                    <Text className="text-white font-black uppercase tracking-widest ml-3">⚔️ Fight Back</Text>
+                  </TouchableOpacity>
+                )}
+                {enc?.type === "PVP_WAITING" && (
+                  <View className="bg-slate-800/60 p-5 rounded-3xl flex-row justify-center items-center">
+                    <ActivityIndicator size="small" color="#f59e0b" />
+                    <Text className="text-amber-400 font-black uppercase tracking-widest ml-3">Waiting for response...</Text>
                   </View>
+                )}
+                {enc?.type !== "PVP_WAITING" && (
+                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("skip")} className="bg-slate-800 p-5 rounded-3xl justify-center items-center">
+                    <Text className="text-slate-400 font-black uppercase tracking-widest">
+                      {enc?.type === 'PVP' ? 'Say Hello (Flee)' :
+                       enc?.type === 'PVP_INCOMING' ? 'Flee (AGI-based)' : 'Bypass'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
-           </View>
+            </View>
+          </View>
         </Modal>
       )}
 
-      {/* ⚔️ BATTLE SIMULATION OVERLAY */}
-      {simBattle && combatSimulation && (
-        <Modal transparent>
-           <View className="flex-1 bg-slate-950/95 justify-center items-center p-6 pt-20">
-              <View className="w-full flex-row justify-between items-center mb-10 px-4">
-                 <View className="items-center flex-1">
-                    <Text className="text-indigo-400 font-black text-xl mb-2">
-                       {simBattle.isGathering ? "⚒️ Worker" : character.name}
-                    </Text>
-                    <View className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                       <View className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${combatSimulation.playerHpPercent}%` }} />
-                    </View>
-                    <Text className="text-slate-500 text-[10px] mt-1 font-bold">
-                       {simBattle.isGathering ? "Efficiency" : `${Math.floor(combatSimulation.playerHp)} HP`}
-                    </Text>
-                 </View>
-                 
-                 <Text className="text-white font-black mx-6 text-2xl italic">
-                    {simBattle.isGathering ? "AT" : "VS"}
-                 </Text>
-                 
-                 <View className="items-center flex-1">
-                    <Text className="text-rose-400 font-black text-xl mb-2">
-                       {simBattle.isGathering ? "Resource" : simBattle.log.enemyName}
-                    </Text>
-                    <View className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                       <View className="h-full bg-rose-500 transition-all duration-500" style={{ width: `${combatSimulation.enemyHpPercent}%` }} />
-                    </View>
-                    <Text className="text-slate-500 text-[10px] mt-1 font-bold">
-                       {simBattle.isGathering ? "Integrity" : `${Math.floor(combatSimulation.enemyHp)} HP`}
-                    </Text>
-                 </View>
-              </View>
-
-              <View className="flex-1 w-full justify-center">
-                 <View className="bg-slate-900 p-8 rounded-[40px] border border-slate-800 shadow-2xl">
-                    <Text className="text-white text-center text-xl font-bold leading-relaxed">{simBattle.log.logDetails[simTurn]?.message}</Text>
-                 </View>
-              </View>
-
-              <View className="flex-row space-x-2 mt-8">
-                 {simBattle.log.logDetails.map((_: any, idx: number) => (
-                    <View key={idx} className={`h-1.5 rounded-full ${idx === simTurn ? 'w-8 bg-indigo-500' : 'w-2 bg-slate-800'}`} />
-                 ))}
-              </View>
-           </View>
-        </Modal>
-      )}
     </View>
   );
 }

@@ -7,6 +7,8 @@ import type { Prisma } from "@prisma/client";
 let io: Server;
 const onlineUsers = new Map<string, number>(); // userId -> connection count
 const activeTrades = new Map<string, string>(); // userId -> partnerId
+const tradeStates = new Map<string, { items: any[], gold: number, locked: boolean, finalized: boolean }>(); // userId -> my offer half
+const pendingTradeRequests = new Map<string, { targetUserId: string; timeout: ReturnType<typeof setTimeout> }>(); 
 
 export function initSocket(fastify: FastifyInstance) {
   io = new Server(fastify.server, {
@@ -99,13 +101,19 @@ export function initSocket(fastify: FastifyInstance) {
     socket.on("trade_request", async (targetUserId: string) => {
        if (targetUserId === userId) return; // Block self-trade
 
-       // ANTI-SPAM: Check if either user is busy
+       // ANTI-SPAM: Block if sender has a pending outgoing invite OR is in active trade
+       if (pendingTradeRequests.has(userId)) {
+          console.log(`⚠️ Blocked: ${userId} already has a pending trade request.`);
+          io.to(`user:${userId}`).emit("trade_request_blocked", { message: "You already have a pending trade request." });
+          return;
+       }
        if (activeTrades.has(userId)) {
-          console.log(`⚠️ Blocked Trade Request: ${userId} is already busy.`);
+          console.log(`⚠️ Blocked Trade Request: ${userId} is already in a trade.`);
           return;
        }
        if (activeTrades.has(targetUserId)) {
           console.log(`⚠️ Blocked Trade Request: ${targetUserId} is busy.`);
+          io.to(`user:${userId}`).emit("trade_request_blocked", { message: "That player is currently busy." });
           return;
        }
 
@@ -116,6 +124,19 @@ export function initSocket(fastify: FastifyInstance) {
        }
 
        console.log(`🤝 [SYSTEM] Trade Request: ${char.name} (${userId}) -> ${targetUserId}`);
+
+       // ⏰ Set 10-second expiry
+       const timeout = setTimeout(() => {
+          if (pendingTradeRequests.has(userId)) {
+             pendingTradeRequests.delete(userId);
+             console.log(`⏰ [SYSTEM] Trade Request Expired: ${userId} -> ${targetUserId}`);
+             io.to(`user:${userId}`).emit("trade_expired", { message: "Your trade request expired." });
+             io.to(`user:${targetUserId}`).emit("trade_expired", { message: "Trade invitation expired." });
+          }
+       }, 10000);
+
+       pendingTradeRequests.set(userId, { targetUserId, timeout });
+
        io.to(`user:${targetUserId}`).emit("trade_invite", { 
           fromUserId: userId,
           fromName: char.name 
@@ -124,9 +145,16 @@ export function initSocket(fastify: FastifyInstance) {
 
     socket.on("trade_respond", async (data: { targetUserId: string, accepted: boolean }) => {
        console.log(`🙋 [SYSTEM] Trade Response from ${userId} to ${data.targetUserId}: ${data.accepted ? 'ACCEPTED' : 'DECLINED'}`);
+
+       // Cancel the sender's pending invite timeout
+       const pending = pendingTradeRequests.get(data.targetUserId);
+       if (pending) {
+          clearTimeout(pending.timeout);
+          pendingTradeRequests.delete(data.targetUserId);
+       }
        
        if (data.accepted) {
-          // Verify neither is busy now
+          // Verify neither is busy now (race condition check)
           if (activeTrades.has(userId) || activeTrades.has(data.targetUserId)) {
              io.to(`user:${userId}`).emit("trade_declined", { message: "One of the players is now busy." });
              return;
@@ -134,9 +162,14 @@ export function initSocket(fastify: FastifyInstance) {
 
           console.log(`✅ [SYSTEM] Initializing Trade: ${userId} <-> ${data.targetUserId}`);
           
-          // SET ACTIVE TRADE (Lock them out of other trades)
+          // SET ACTIVE TRADE
           activeTrades.set(userId, data.targetUserId);
           activeTrades.set(data.targetUserId, userId);
+
+          // Initialize states
+          const emptyState = { items: [], gold: 0, locked: false, finalized: false };
+          tradeStates.set(userId, { ...emptyState });
+          tradeStates.set(data.targetUserId, { ...emptyState });
 
           // Send confirm to both to open modals
           io.to(`user:${userId}`).emit("trade_start", { partnerUserId: data.targetUserId });
@@ -150,32 +183,85 @@ export function initSocket(fastify: FastifyInstance) {
        console.log(`🛑 [SYSTEM] Trade Cancelled by ${userId} for ${data.targetUserId}`);
        activeTrades.delete(userId);
        activeTrades.delete(data.targetUserId);
+       tradeStates.delete(userId);
+       tradeStates.delete(data.targetUserId);
        io.to(`user:${data.targetUserId}`).emit("trade_cancelled", { fromUserId: userId });
     });
 
     socket.on("trade_update", (data: { toUserId: string, items: any[], gold: number, locked: boolean }) => {
+       // Update server state
+       const myState = tradeStates.get(userId);
+       if (myState) {
+         // If offer changed or unlocked, reset finalized status for both (safety reset)
+         const changed = JSON.stringify(myState.items) !== JSON.stringify(data.items) || myState.gold !== data.gold || myState.locked !== data.locked;
+         if (changed) {
+           myState.finalized = false;
+           const partnerState = tradeStates.get(data.toUserId);
+           if (partnerState) partnerState.finalized = false;
+         }
+         
+         myState.items = data.items;
+         myState.gold = data.gold;
+         myState.locked = data.locked;
+       }
+
        io.to(`user:${data.toUserId}`).emit("trade_sync", {
           fromUserId: userId,
           items: data.items,
           gold: data.gold,
-          locked: data.locked
+          locked: data.locked,
+          finalized: myState?.finalized || false
        });
     });
 
-    socket.on("trade_commit", async (data: { targetUserId: string, myItems: any[], myGold: number, hisItems: any[], hisGold: number }) => {
+    socket.on("trade_commit", async (data: { targetUserId: string }) => {
        try {
+          const myState = tradeStates.get(userId);
+          const companionId = activeTrades.get(userId);
+          if (!myState || companionId !== data.targetUserId) return;
+
+          const partnerState = tradeStates.get(data.targetUserId);
+          if (!partnerState) return;
+
+          // Double check locking requirement
+          if (!myState.locked || !partnerState.locked) {
+            throw new Error("Both players must lock before finalizing.");
+          }
+
+          // Mark as finalized
+          myState.finalized = true;
+
+          // Sync commitment status (notify partner)
+          io.to(`user:${data.targetUserId}`).emit("trade_sync", {
+             fromUserId: userId,
+             items: myState.items,
+             gold: myState.gold,
+             locked: myState.locked,
+             finalized: true
+          });
+
+          // Only execute transaction if BOTH have finalized
+          if (!partnerState.finalized) {
+            console.log(`⏳ [TRADE] ${userId} finalized, waiting for ${data.targetUserId}`);
+            return;
+          }
+
+          console.log(`🚀 [TRADE] Both players finalized! Executing: ${userId} <-> ${data.targetUserId}`);
+
           await prisma.$transaction(async (tx) => {
              const me = await tx.character.findFirst({ where: { userId } });
              const him = await tx.character.findFirst({ where: { userId: data.targetUserId } });
 
              if (!me || !him) throw new Error("Characters not found");
 
-             if (me.gold < data.myGold) throw new Error("Not enough gold");
-             if (him.gold < data.hisGold) throw new Error("Partner not enough gold");
+             if (me.gold < myState.gold) throw new Error("Not enough gold");
+             if (him.gold < partnerState.gold) throw new Error("Partner not enough gold");
 
-             // 1. Move Gold
-             await tx.character.update({ where: { id: me.id }, data: { gold: { decrement: data.myGold, increment: data.hisGold } } });
-             await tx.character.update({ where: { id: him.id }, data: { gold: { decrement: data.hisGold, increment: data.myGold } } });
+             // 1. Move Gold — net delta per player (received - sent)
+             const myGoldDelta = partnerState.gold - myState.gold;
+             const hisGoldDelta = myState.gold - partnerState.gold;
+             await tx.character.update({ where: { id: me.id }, data: { gold: { increment: myGoldDelta } } });
+             await tx.character.update({ where: { id: him.id }, data: { gold: { increment: hisGoldDelta } } });
 
              const processTransfer = async (items: any[], fromChar: any, toChar: any) => {
                 const tradeSummary = [];
@@ -216,16 +302,16 @@ export function initSocket(fastify: FastifyInstance) {
              };
 
              // 2. Translocate Items
-             const myOfferSummary = await processTransfer(data.myItems, me, him);
-             const hisOfferSummary = await processTransfer(data.hisItems, him, me);
+             const myOfferSummary = await processTransfer(myState.items, me, him);
+             const hisOfferSummary = await processTransfer(partnerState.items, him, me);
 
              // 3. Log Trade
-             await (tx as any).tradeLog.create({
+             await tx.tradeLog.create({
                 data: {
                    initiatorId: me.id,
                    partnerId: him.id,
-                   initiatorOffer: { items: myOfferSummary, gold: data.myGold },
-                   partnerOffer: { items: hisOfferSummary, gold: data.hisGold }
+                   initiatorOffer: { items: myOfferSummary, gold: myState.gold },
+                   partnerOffer: { items: hisOfferSummary, gold: partnerState.gold }
                 }
              });
           });
@@ -236,6 +322,8 @@ export function initSocket(fastify: FastifyInstance) {
           // CLEAR ACTIVE TRADE
           activeTrades.delete(userId);
           activeTrades.delete(data.targetUserId);
+          tradeStates.delete(userId);
+          tradeStates.delete(data.targetUserId);
        } catch (err: any) {
           console.error("Trade Failed:", err.message);
           io.to(`user:${userId}`).emit("trade_complete", { success: false, error: err.message });
@@ -243,16 +331,29 @@ export function initSocket(fastify: FastifyInstance) {
           // ALSO CLEAR ON FAILURE
           activeTrades.delete(userId);
           activeTrades.delete(data.targetUserId);
+          tradeStates.delete(userId);
+          tradeStates.delete(data.targetUserId);
        }
     });
 
     socket.on("disconnect", () => {
       console.log(`👤 User disconnected: ${userId}`);
+
+      // Clean up any pending outgoing trade request
+      const pending = pendingTradeRequests.get(userId);
+      if (pending) {
+         clearTimeout(pending.timeout);
+         pendingTradeRequests.delete(userId);
+         io.to(`user:${pending.targetUserId}`).emit("trade_expired", { message: "Trade invitation expired (player disconnected)." });
+      }
+
       const partnerId = activeTrades.get(userId);
       if (partnerId) {
          console.log(`🧹 [SYSTEM] Cleaning active trade for ${userId} (partner: ${partnerId})`);
          activeTrades.delete(userId);
          activeTrades.delete(partnerId);
+         tradeStates.delete(userId);
+         tradeStates.delete(partnerId);
          io.to(`user:${partnerId}`).emit("trade_cancelled", { message: "Partner disconnected" });
       }
 

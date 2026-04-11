@@ -328,5 +328,19 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
     }
   });
 
-  return { isWin: isAttackerWin, winnerName: winner.name, loserName: loser.name, goldStolen: loserGoldLost, lootedItems: droppedItems, log: { logDetails: combatLog, enemyName: isAttackerWin ? defenderChar.name : attackerChar.name } };
+  return { 
+    isWin: isAttackerWin, 
+    winnerName: winner.name, 
+    loserName: loser.name, 
+    goldStolen: loserGoldLost, 
+    lootedItems: droppedItems, 
+    log: { logDetails: combatLog, enemyName: isAttackerWin ? defenderChar.name : attackerChar.name },
+    // Starting HP for autobattler seeding
+    attackerName: attackerChar.name,
+    defenderName: defenderChar.name,
+    attackerStartHp: attackerChar.hp,
+    attackerMaxHp: attackerChar.maxHp,
+    defenderStartHp: defenderChar.hp,
+    defenderMaxHp: defenderChar.maxHp,
+  };
 }

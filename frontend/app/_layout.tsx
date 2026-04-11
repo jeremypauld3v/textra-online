@@ -7,7 +7,6 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useGameStore } from "../store/useGameStore";
 import { SocketProvider, useSocket } from "../context/SocketContext";
 import { CustomAlert } from "../components/CustomAlert";
-import DirectTradeModal from "../components/DirectTradeModal";
 
 const toastConfig = {
   success: (props: any) => (
@@ -38,7 +37,7 @@ const toastConfig = {
 };
 
 function GlobalUI() {
-  const { tradeWith, setTradeWith, alertConfig } = useSocket();
+  const { alertConfig } = useSocket();
 
   return (
     <>
@@ -50,13 +49,6 @@ function GlobalUI() {
         onConfirm={alertConfig.onConfirm}
         onCancel={alertConfig.onCancel}
       />
-      {tradeWith && (
-        <DirectTradeModal 
-          visible={!!tradeWith}
-          targetUserId={tradeWith}
-          onClose={() => setTradeWith(null)}
-        />
-      )}
     </>
   );
 }
