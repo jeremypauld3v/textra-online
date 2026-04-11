@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { gameDataManager } from "./gameDataManager.js";
 import { equipmentService } from "./equipmentService.js";
+import { inventoryService } from "./inventoryService.js";
 import type { Character } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 
@@ -177,21 +178,12 @@ export async function executeCombat(character: Character, enemy: any) {
       for (const entry of monsterTemplate.lootTable) {
         const dropChance = Math.min(0.9, entry.chance * lootMult);
         if (Math.random() < dropChance) {
-          const existing = await prisma.inventoryItem.findFirst({
-            where: { characterId: character.id, itemCode: entry.itemCode }
-          });
-          
-          if (existing) {
-            await prisma.inventoryItem.update({
-              where: { id: existing.id },
-              data: { quantity: { increment: 1 } }
-            });
-          } else {
-            await prisma.inventoryItem.create({
-              data: { characterId: character.id, itemCode: entry.itemCode, quantity: 1 }
-            });
+          try {
+            await inventoryService.addItem(character.id, entry.itemCode, 1);
+            lootedItems.push(entry.itemCode);
+          } catch (e: any) {
+            console.warn(`Loot failed: ${e.message}`);
           }
-          lootedItems.push(entry.itemCode);
         }
       }
     }
@@ -247,13 +239,10 @@ export async function executeGathering(character: Character, node: any) {
   });
 
   if (node.itemCode) {
-    const existing = await prisma.inventoryItem.findFirst({
-      where: { characterId: character.id, itemCode: node.itemCode }
-    });
-    if (existing) {
-      await prisma.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { increment: node.amount } } });
-    } else {
-      await prisma.inventoryItem.create({ data: { characterId: character.id, itemCode: node.itemCode, quantity: node.amount } });
+    try {
+      await inventoryService.addItem(character.id, node.itemCode, node.amount);
+    } catch (e: any) {
+      console.warn(`Gathering failed: ${e.message}`);
     }
   }
 

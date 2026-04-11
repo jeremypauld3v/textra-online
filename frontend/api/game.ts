@@ -164,8 +164,8 @@ export const gameApi = {
     return response.data;
   },
 
-  buyItem: async (listingId: string) => {
-    const response = await apiClient.post<{ success: boolean; message: string }>("/game/market/buy", { listingId });
+  buyItem: async (listingId: string, quantity: number) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/market/buy", { listingId, quantity });
     return response.data;
   },
 

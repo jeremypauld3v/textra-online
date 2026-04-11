@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { inventoryService } from "./inventoryService.js";
 
 /**
  * ⚒️ CraftingService
@@ -102,40 +103,14 @@ export class CraftingService {
         }
       }
 
-      if (isEquipment) {
-        // Equipment: Always create a new unique instance with rolled stats
-        await tx.inventoryItem.create({
-          data: {
-            characterId,
-            itemCode: recipe.resultItemCode,
-            quantity: 1,
-            rolledAtk,
-            rolledDef,
-            rolledStr,
-            rolledAgi
-          }
-        });
-      } else {
-        // Non-equipment: Stack as usual (consumables, materials)
-        const existing = await tx.inventoryItem.findFirst({
-          where: { characterId, itemCode: recipe.resultItemCode }
-        });
-
-        if (existing) {
-          await tx.inventoryItem.update({
-            where: { id: existing.id },
-            data: { quantity: { increment: 1 } }
-          });
-        } else {
-          await tx.inventoryItem.create({
-            data: {
-              characterId,
-              itemCode: recipe.resultItemCode,
-              quantity: 1
-            }
-          });
-        }
-      }
+      // Handle Result Creation via Centralized Service
+      await inventoryService.addItem(
+        characterId,
+        recipe.resultItemCode,
+        1,
+        { rolledAtk, rolledDef, rolledStr, rolledAgi },
+        tx
+      );
     });
 
     return { 

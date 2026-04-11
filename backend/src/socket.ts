@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
 import { prisma } from "./lib/prisma.js";
 import type { Prisma } from "@prisma/client";
+import { inventoryService } from "./services/inventoryService.js";
 
 let io: Server;
 const onlineUsers = new Map<string, number>(); // userId -> connection count
@@ -275,26 +276,29 @@ export function initSocket(fastify: FastifyInstance) {
 
                    tradeSummary.push({ itemCode: original.itemCode, quantity: tradeItem.quantity, name: original.template.name });
 
+                   // Recipient receives via centralized Service (handles stacking/capacity)
+                   await inventoryService.addItem(
+                      toChar.id,
+                      original.itemCode,
+                      tradeItem.quantity,
+                      { 
+                        rolledAtk: original.rolledAtk, 
+                        rolledDef: original.rolledDef, 
+                        rolledStr: original.rolledStr, 
+                        rolledAgi: original.rolledAgi 
+                      },
+                      tx
+                   );
+
+                   // Sender loses
                    if (original.quantity > tradeItem.quantity) {
                       await tx.inventoryItem.update({
                          where: { id: original.id },
                          data: { quantity: { decrement: tradeItem.quantity } }
                       });
-                      await tx.inventoryItem.create({
-                         data: {
-                            characterId: toChar.id,
-                            itemCode: original.itemCode,
-                            quantity: tradeItem.quantity,
-                            rolledAtk: original.rolledAtk,
-                            rolledDef: original.rolledDef,
-                            rolledStr: original.rolledStr,
-                            rolledAgi: original.rolledAgi
-                         }
-                      });
                    } else {
-                      await tx.inventoryItem.update({
-                         where: { id: original.id },
-                         data: { characterId: toChar.id }
+                      await tx.inventoryItem.delete({
+                         where: { id: original.id }
                       });
                    }
                 }

@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { inventoryService } from "./inventoryService.js";
 
 /**
  * 💰 MarketService
@@ -67,9 +68,11 @@ export class MarketService {
 
   /**
    * 🛒 Buy an item from the marketplace
-   * Atomic swap of Gold and Items.
+   * Atomic swap of Gold and Items. Supports partial stack buying.
    */
-  async buyItem(buyerId: string, listingId: string) {
+  async buyItem(buyerId: string, listingId: string, requestedQuantity: number) {
+    if (requestedQuantity <= 0) throw new Error("Invalid quantity");
+
     // 1. Fetch listing and buyer
     const listing = await prisma.marketListing.findUnique({
       where: { id: listingId },
@@ -78,24 +81,26 @@ export class MarketService {
 
     if (!listing) throw new Error("Listing no longer exists");
     if (listing.sellerId === buyerId) throw new Error("You cannot buy your own listing");
+    if (requestedQuantity > listing.quantity) throw new Error("Not enough items in listing");
 
     const buyer = await prisma.character.findUnique({ where: { id: buyerId } });
     if (!buyer) throw new Error("Buyer not found");
 
-    if (buyer.gold < listing.price) {
+    const totalCost = requestedQuantity * listing.price;
+    if (buyer.gold < totalCost) {
       throw new Error("Insufficient gold");
     }
 
     // 2. Logic: Seller gets 95% (5% Tax)
-    const tax = Math.floor(listing.price * 0.05);
-    const sellerEarnings = listing.price - tax;
+    const tax = Math.floor(totalCost * 0.05);
+    const sellerEarnings = totalCost - tax;
 
     // 3. Execution (Atomic Transaction)
     await prisma.$transaction(async (tx) => {
       // Deduct Gold from Buyer
       await tx.character.update({
         where: { id: buyerId },
-        data: { gold: { decrement: listing.price } }
+        data: { gold: { decrement: totalCost } }
       });
 
       // Add Gold to Seller
@@ -105,46 +110,31 @@ export class MarketService {
       });
 
       // Add Item to Buyer's Inventory
-      if (listing.rolledAtk !== null) {
-        // Equipment: Create new unique entry
-        await tx.inventoryItem.create({
-          data: {
-            characterId: buyerId,
-            itemCode: listing.itemCode,
-            quantity: listing.quantity,
-            rolledAtk: listing.rolledAtk,
-            rolledDef: listing.rolledDef,
-            rolledStr: listing.rolledStr,
-            rolledAgi: listing.rolledAgi
-          }
+      await inventoryService.addItem(
+        buyerId,
+        listing.itemCode,
+        requestedQuantity,
+        { 
+          rolledAtk: listing.rolledAtk, 
+          rolledDef: listing.rolledDef, 
+          rolledStr: listing.rolledStr, 
+          rolledAgi: listing.rolledAgi 
+        },
+        tx
+      );
+
+      // Update or Remove Listing
+      if (listing.quantity > requestedQuantity) {
+        await tx.marketListing.update({
+          where: { id: listingId },
+          data: { quantity: { decrement: requestedQuantity } }
         });
       } else {
-        // Material/Consumable: Stack
-        const existing = await tx.inventoryItem.findFirst({
-          where: { characterId: buyerId, itemCode: listing.itemCode }
-        });
-
-        if (existing) {
-          await tx.inventoryItem.update({
-            where: { id: existing.id },
-            data: { quantity: { increment: listing.quantity } }
-          });
-        } else {
-          await tx.inventoryItem.create({
-            data: {
-              characterId: buyerId,
-              itemCode: listing.itemCode,
-              quantity: listing.quantity
-            }
-          });
-        }
+        await tx.marketListing.delete({ where: { id: listingId } });
       }
-
-      // Remove Listing
-      await tx.marketListing.delete({ where: { id: listingId } });
     });
 
-    return { success: true, message: "Purchase complete!" };
+    return { success: true, message: `Purchased x${requestedQuantity} for ${totalCost}G` };
   }
 
   /**

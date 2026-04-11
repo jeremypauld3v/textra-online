@@ -749,10 +749,10 @@ export async function gameRoutes(server: FastifyInstance) {
    */
   server.post("/market/buy", async (request, reply) => {
     const { characterId } = request.user as { characterId: string };
-    const { listingId } = request.body as { listingId: string };
+    const { listingId, quantity } = request.body as { listingId: string; quantity: number };
 
     try {
-      const result = await marketService.buyItem(characterId, listingId);
+      const result = await marketService.buyItem(characterId, listingId, quantity);
       return reply.send(result);
     } catch (e: any) {
       return reply.status(400).send({ error: e.message });

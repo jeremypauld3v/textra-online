@@ -73,13 +73,21 @@ export default function TradeScreen() {
     return inventory.filter(item => !equippedIds.includes(item.id));
   }, [inventory, character]);
 
+  const safeBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/inventory");
+    }
+  }, [router]);
+
   const handleClose = useCallback(() => {
     if (socket && targetUserId) {
       socket.emit("trade_cancel", { targetUserId });
     }
     setTradeWith(null);
-    router.back();
-  }, [socket, targetUserId, setTradeWith, router]);
+    safeBack();
+  }, [socket, targetUserId, setTradeWith, safeBack]);
 
   useEffect(() => {
     if (!socket) return;
@@ -99,7 +107,7 @@ export default function TradeScreen() {
       if (data.success) {
         Toast.show({ type: 'success', text1: '✅ Trade Complete', text2: 'Transaction completed!' });
         setTradeWith(null);
-        router.back();
+        safeBack();
       } else {
         Alert.alert("Trade Failed", data.error || "Something went wrong.");
         setMyFinalized(false);
@@ -109,7 +117,7 @@ export default function TradeScreen() {
     socket.on("trade_cancelled", () => {
       Toast.show({ type: 'error', text1: 'Trade Cancelled', text2: 'Partner ended the session.' });
       setTradeWith(null);
-      router.back();
+      safeBack();
     });
 
     return () => {
@@ -117,7 +125,7 @@ export default function TradeScreen() {
       socket.off("trade_complete");
       socket.off("trade_cancelled");
     };
-  }, [socket, targetUserId, setTradeWith, router]);
+  }, [socket, targetUserId, setTradeWith, safeBack]);
 
   // Sync my offer to partner whenever it changes
   useEffect(() => {
@@ -175,9 +183,9 @@ export default function TradeScreen() {
   // Guard: if no active trade partner, navigate back safely (can't call router.back() during render)
   useEffect(() => {
     if (!targetUserId) {
-      router.back();
+      safeBack();
     }
-  }, [targetUserId, router]);
+  }, [targetUserId, safeBack]);
 
   if (!targetUserId) return null;
 

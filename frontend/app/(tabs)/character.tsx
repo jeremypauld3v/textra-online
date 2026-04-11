@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useState, useCallback } from "react";
 import { useFocusEffect } from "expo-router";
@@ -10,11 +10,11 @@ import Toast from "react-native-toast-message";
 type StatAttribute = "str" | "agi" | "dex" | "int" | "luk";
 
 const STAT_INFO: { id: StatAttribute; name: string; icon: string; color: string; desc: string }[] = [
-  { id: "str", name: "Strength", icon: "fitness", color: "#f87171", desc: "Attack Power & HP" },
-  { id: "agi", name: "Agility", icon: "speedometer", color: "#60a5fa", desc: "Evasion & Speed" },
-  { id: "dex", name: "Dexterity", icon: "locate", color: "#4ade80", desc: "Accuracy & Damage" },
-  { id: "int", name: "Intelligence", icon: "book", color: "#a78bfa", desc: "Mana & Magic" },
-  { id: "luk", name: "Luck", icon: "sparkles", color: "#fbbf24", desc: "Critical Rate & Drops" },
+  { id: "str", name: "STR", icon: "fitness", color: "#f87171", desc: "Increases physical damage and maximum HP." },
+  { id: "agi", name: "AGI", icon: "speedometer", color: "#60a5fa", desc: "Increases attack speed and evasion chance." },
+  { id: "dex", name: "DEX", icon: "locate", color: "#4ade80", desc: "Improves accuracy and minimum damage consistency." },
+  { id: "int", name: "INT", icon: "book", color: "#a78bfa", desc: "Increases magic power and maximum energy." },
+  { id: "luk", name: "LUK", icon: "sparkles", color: "#fbbf24", desc: "Boosts critical hit rate and item drop chance." },
 ];
 
 export default function CharacterScreen() {
@@ -29,10 +29,7 @@ export default function CharacterScreen() {
       setStatus(data.character);
     } catch (e: any) {
       if (e.response?.status === 401) {
-        console.log("Session expired, RootLayout will handle redirect.");
         useAuthStore.getState().logout();
-      } else {
-        console.warn("Fetch Status Error:", e.name === "AxiosError" ? e.message : e);
       }
     } finally {
       setLoading(false);
@@ -42,25 +39,20 @@ export default function CharacterScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchStatus();
-      const interval = setInterval(fetchStatus, 5000); // Poll for HP/EXP updates
+      const interval = setInterval(fetchStatus, 10000); // Polling every 10s is enough for status tab
       return () => clearInterval(interval);
     }, [fetchStatus])
   );
-
-  const handleLogout = async () => {
-    await logout();
-    // Redirect will be handled by the Global Auth Watcher in _layout.tsx
-  };
 
   const handleAllocate = async (stat: StatAttribute) => {
     if (isAllocating) return;
     try {
       setIsAllocating(true);
       await gameApi.allocateStat(stat);
-      Toast.show({ type: "success", text1: "Stat Increased", text2: `${stat.toUpperCase()} is now higher!` });
+      Toast.show({ type: "success", text1: "Upgraded!", text2: `${stat.toUpperCase()} increased.` });
       fetchStatus();
     } catch (e: any) {
-      Alert.alert("Allocation Failed", e.response?.data?.error || "Unknown error");
+      Alert.alert("Error", e.response?.data?.error || "Failed to allocate");
     } finally {
       setIsAllocating(false);
     }
@@ -69,11 +61,15 @@ export default function CharacterScreen() {
   const handleUnequip = async (slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS") => {
     try {
       await gameApi.unequip(slot);
-      Toast.show({ type: "success", text1: "Success", text2: "Gear unequipped" });
+      Toast.show({ type: "success", text1: "Unequipped" });
       fetchStatus();
     } catch (e: any) {
       Alert.alert("Unequip Failed", e.response?.data?.error || "Unknown error");
     }
+  };
+
+  const showStatInfo = (name: string, desc: string) => {
+    Alert.alert(name, desc);
   };
 
   if (loading || !status) {
@@ -89,149 +85,129 @@ export default function CharacterScreen() {
   const hpPercentage = (status.hp / status.maxHp) * 100;
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-950">
-      <ScrollView className="flex-1 px-6 pt-10">
-        <View className="flex-row justify-between items-center mb-10">
-          <View>
-            <Text className="text-slate-500 font-black uppercase text-[10px] tracking-widest mb-1">Immortal Presence</Text>
-            <Text className="text-4xl font-black text-white italic uppercase tracking-tighter">{status.name}</Text>
-          </View>
-          <TouchableOpacity onPress={handleLogout} className="bg-slate-900 p-3 rounded-2xl border border-slate-800">
+    <SafeAreaView className="flex-1 bg-slate-950 px-4 pt-4">
+      
+      {/* 🟢 HEADER SECTION */}
+      <View className="flex-row justify-between items-center mb-2">
+         <View className="flex-1">
+            <View className="flex-row items-center">
+               <Text className="text-white text-2xl font-black italic mr-2 tracking-tight">{status.name}</Text>
+               <View className="bg-indigo-600 px-3 py-1 rounded-md">
+                  <Text className="text-white font-black text-[10px]">LV. {status.level}</Text>
+               </View>
+            </View>
+            <Text className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-0.5">{status.rankName} Class</Text>
+         </View>
+         <TouchableOpacity onPress={logout} className="p-2 bg-slate-900 rounded-xl border border-slate-800">
             <Ionicons name="log-out-outline" size={20} color="#f43f5e" />
-          </TouchableOpacity>
-        </View>
+         </TouchableOpacity>
+      </View>
 
-        {/* Level & HP Card */}
-        <View className="bg-slate-900 border border-slate-800 rounded-[40px] p-8 mb-10 overflow-hidden shadow-2xl">
-          <View className="flex-row items-center mb-6">
-            <View className="flex-row items-baseline">
-              <Text className="text-slate-500 font-bold text-2xl mr-2">LVL</Text>
-              <Text className="text-white text-6xl font-black">{String(status.level || 1)}</Text>
-            </View>
-            <View className="ml-6 flex-1">
-               <View className="flex-row justify-between items-end mb-2">
-                  <Text className="text-rose-400 font-black uppercase text-[10px] tracking-widest">Vitality</Text>
-                  <Text className="text-white font-bold text-xs">{status.hp} / {status.maxHp}</Text>
+      {/* 📊 PROGRESS BARS */}
+      <View className="mb-4">
+         <View className="flex-row justify-between mb-1 px-1">
+            <Text className="text-rose-400 font-black text-[9px] uppercase">Vitality: {status.hp}/{status.maxHp}</Text>
+            <Text className="text-indigo-400 font-black text-[9px] uppercase">EXP: {status.exp}/{expToNext}</Text>
+         </View>
+         <View className="h-1.5 bg-slate-900 rounded-full overflow-hidden mb-1 border border-slate-800">
+            <View className="h-full bg-rose-500" style={{ width: `${Math.min(100, hpPercentage)}%` }} />
+         </View>
+         <View className="h-1 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+            <View className="h-full bg-indigo-500" style={{ width: `${Math.min(100, expPercentage)}%` }} />
+         </View>
+      </View>
+
+      {/* ⚡ COMBAT SUMMARY (4 Cards) */}
+      <View className="flex-row justify-between mb-4">
+         <StatSmallCard icon="flash" color="#fb7185" value={status.atk} label="ATTACK" />
+         <StatSmallCard icon="shield" color="#34d399" value={status.def} label="DEFENSE" />
+         <StatSmallCard icon="cash" color="#fbbf24" value={status.gold} label="GOLD" />
+         <StatSmallCard icon="star" color="#818cf8" value={status.statPoints} label="POINTS" />
+      </View>
+
+      {/* 🛡️ EQUIPMENT ROW */}
+      <View className="mb-6">
+         <Text className="text-slate-500 font-black text-[10px] uppercase tracking-widest mb-3 px-1">Active Gear</Text>
+         <View className="flex-row justify-between h-16">
+            <SquareGearSlot label="Weapon" item={status.equippedWeapon} onUnequip={() => handleUnequip("WEAPON")} />
+            <SquareGearSlot label="Armor" item={status.equippedChest} onUnequip={() => handleUnequip("CHEST")} />
+            <SquareGearSlot label="Helmet" item={status.equippedHelmet} onUnequip={() => handleUnequip("HELMET")} />
+            <SquareGearSlot label="Boots" item={status.equippedBoots} onUnequip={() => handleUnequip("BOOTS")} />
+         </View>
+      </View>
+
+      {/* 🧬 ATTRIBUTE GRID (2 Columns) */}
+      <View className="flex-1">
+         <Text className="text-slate-500 font-black text-[10px] uppercase tracking-widest mb-3 px-1">Attributes</Text>
+         <View className="flex-row flex-wrap justify-between">
+            {STAT_INFO.map(stat => (
+               <View key={stat.id} className="w-[48.5%] bg-slate-900 border border-slate-800 rounded-2xl mb-3 flex-row justify-between items-center h-16 relative overflow-hidden">
+                  <TouchableOpacity 
+                    className="flex-row items-center flex-1 h-full px-4"
+                    onPress={() => showStatInfo(stat.name, stat.desc)}
+                  >
+                     <View className="w-7 h-7 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: `${stat.color}20` }}>
+                        <Ionicons name={stat.icon as any} size={14} color={stat.color} />
+                     </View>
+                     <View>
+                        <Text className="text-white font-black text-lg leading-tight">{status[stat.id] as number}</Text>
+                        <Text className="text-slate-500 font-bold text-[9px] uppercase tracking-tighter">{stat.name}</Text>
+                     </View>
+                  </TouchableOpacity>
+                  
+                  {status.statPoints > 0 && (
+                     <TouchableOpacity 
+                        onPress={() => handleAllocate(stat.id)}
+                        className="bg-indigo-600 w-8 h-full items-center justify-center border-l border-slate-800"
+                     >
+                        <Ionicons name="add" size={18} color="white" />
+                     </TouchableOpacity>
+                  )}
                </View>
-               <View className="w-full h-2 bg-slate-950 rounded-full border border-slate-800 overflow-hidden">
-                  <View 
-                    className="h-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]" 
-                    style={{ width: `${Math.min(100, hpPercentage)}%` }} 
-                  />
-               </View>
-            </View>
-          </View>
-          
-          <View className="w-full h-3 bg-slate-950 rounded-full border border-slate-800 overflow-hidden">
-            <View 
-              className="h-full bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.5)]" 
-              style={{ width: `${Math.min(100, expPercentage)}%` }} 
-            />
-          </View>
-          <View className="flex-row justify-between mt-3">
-            <Text className="text-slate-500 font-bold text-[10px]">{status.exp} EXP</Text>
-            <Text className="text-slate-500 font-bold text-[10px]">{expToNext} FOR NEXT</Text>
-          </View>
-        </View>
+            ))}
+            {/* Empty placeholder to keep layout consistent */}
+            <View className="w-[48.5%] h-16 opacity-0" />
+         </View>
+      </View>
 
-        <View className="mb-10">
-          <Text className="text-slate-500 font-black uppercase text-[10px] tracking-widest mb-6 px-2">Core Attributes</Text>
-          
-          <View className="flex-row flex-wrap justify-between">
-            {STAT_INFO.map(item => {
-              const val = status[item.id] as number;
-              return (
-                <View key={item.id} className="w-[48%] bg-slate-900 border border-slate-800 rounded-[32px] p-5 mb-4 shadow-lg">
-                  <View className="flex-row justify-between items-center mb-4">
-                    <View className="p-2 rounded-xl" style={{ backgroundColor: `${item.color}20` }}>
-                      <Ionicons name={item.icon as any} size={18} color={item.color} />
-                    </View>
-                    {status.statPoints > 0 && (
-                      <TouchableOpacity 
-                        onPress={() => handleAllocate(item.id)}
-                        className="bg-indigo-600 w-8 h-8 rounded-full justify-center items-center"
-                      >
-                        <Ionicons name="add" size={20} color="white" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  <Text className="text-white font-black text-2xl">{val || 0}</Text>
-                  <Text className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mt-1">{item.name}</Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
+      {/* 🧭 FOOTER */}
+      <View className="py-4 border-t border-slate-900 mt-2">
+         <Text className="text-center text-slate-500 font-bold text-[9px] uppercase italic tracking-widest">
+            {status.locationName} • {status.isSafe ? "Protected Region" : "Hostile Territory"}
+         </Text>
+      </View>
 
-        <View className="flex-row justify-between mb-20 px-1">
-          <View className="bg-indigo-600/10 border border-indigo-500/20 rounded-[32px] p-6 flex-1 mr-2 flex-row items-center justify-between">
-            <View>
-              <Text className="text-indigo-400 font-black text-xl italic">{status.statPoints} Points</Text>
-              <Text className="text-indigo-500/50 font-bold uppercase text-[9px] tracking-widest mt-1">Available</Text>
-            </View>
-            <View className="bg-indigo-600 w-8 h-8 rounded-xl items-center justify-center">
-              <Text className="text-white font-black uppercase text-[10px]">UP</Text>
-            </View>
-          </View>
-
-          <View className="bg-amber-600/10 border border-amber-500/20 rounded-[32px] p-6 flex-1 ml-2 flex-row items-center justify-between">
-            <View>
-              <Text className="text-amber-400 font-black text-xl italic">{status.gold} G</Text>
-              <Text className="text-amber-500/50 font-bold uppercase text-[9px] tracking-widest mt-1">Coin Purse</Text>
-            </View>
-            <View className="bg-amber-600 w-8 h-8 rounded-xl items-center justify-center">
-              <Ionicons name="cash" size={14} color="white" />
-            </View>
-          </View>
-        </View>
-
-        {/* ⚔️ Combat Power Card */}
-        <View className="flex-row justify-between mb-10">
-          <View className="flex-1 bg-rose-600/10 border border-rose-500/20 p-6 rounded-[32px] mr-2">
-            <Text className="text-rose-400 font-black text-3xl italic">{status.atk}</Text>
-            <Text className="text-rose-500/50 font-bold uppercase text-[9px] tracking-widest mt-1">Attack Power</Text>
-          </View>
-          <View className="flex-1 bg-emerald-600/10 border border-emerald-500/20 p-6 rounded-[32px] ml-2">
-            <Text className="text-emerald-400 font-black text-3xl italic">{status.def}</Text>
-            <Text className="text-emerald-500/50 font-bold uppercase text-[9px] tracking-widest mt-1">Defense Power</Text>
-          </View>
-        </View>
-
-        {/* 🛡️ Equipment Slots */}
-        <View className="mb-20">
-          <Text className="text-slate-500 font-black uppercase text-[10px] tracking-widest mb-6 px-2">Gear Slots</Text>
-          <View className="flex-row justify-between mb-4">
-             <GearSlot label="Weapon" item={status.equippedWeapon} onUnequip={() => handleUnequip("WEAPON")} />
-             <GearSlot label="Helmet" item={status.equippedHelmet} onUnequip={() => handleUnequip("HELMET")} />
-          </View>
-          <View className="flex-row justify-between">
-             <GearSlot label="Armor" item={status.equippedChest} onUnequip={() => handleUnequip("CHEST")} />
-             <GearSlot label="Boots" item={status.equippedBoots} onUnequip={() => handleUnequip("BOOTS")} />
-          </View>
-        </View>
-      </ScrollView>
     </SafeAreaView>
   );
 }
 
-function GearSlot({ label, item, onUnequip }: any) {
-  return (
-    <TouchableOpacity 
-      disabled={!item}
-      onLongPress={onUnequip}
-      className={`w-[48%] h-24 rounded-[32px] border p-4 justify-between items-center flex-row ${
-        item ? 'bg-slate-900 border-indigo-500/50' : 'bg-slate-900/30 border-slate-800 border-dashed'
-      }`}
-    >
-      <View>
-         <Text className="text-white font-black text-xl">{item ? item.template.emoji : "🕳️"}</Text>
-         <Text className="text-slate-600 font-bold uppercase text-[8px] tracking-widest mt-1">{label}</Text>
+function StatSmallCard({ icon, color, value, label }: any) {
+   return (
+      <View className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex-1 mx-1 items-center justify-center">
+         <Text className="text-white font-black text-sm mb-0.5" numberOfLines={1}>{value}</Text>
+         <View className="flex-row items-center">
+            <Ionicons name={icon} size={8} color={color} style={{ marginRight: 3 }} />
+            <Text className="text-slate-500 font-black text-[8px] uppercase tracking-tighter" numberOfLines={1}>{label}</Text>
+         </View>
       </View>
-      {item && (
-        <View className="bg-indigo-600/10 px-2 py-1 rounded-md border border-indigo-500/20">
-           <Text className="text-indigo-400 font-bold text-[8px]">Equipped</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+   )
+}
+
+function SquareGearSlot({ label, item, onUnequip }: any) {
+   return (
+      <TouchableOpacity 
+         onLongPress={item ? onUnequip : undefined}
+         className={`w-[23.5%] rounded-2xl border items-center justify-center ${
+            item ? 'bg-slate-900 border-indigo-500/30 shadow-lg' : 'bg-slate-900/10 border-slate-800 border-dashed'
+         }`}
+      >
+         <Text className="text-2xl mb-1">{item ? item.template.emoji : "➖"}</Text>
+         <Text className="text-slate-700 font-black text-[7px] uppercase tracking-tighter">{label}</Text>
+         {item && (
+            <View className="absolute top-1 right-1">
+               <Ionicons name="checkmark-circle" size={10} color="#818cf8" />
+            </View>
+         )}
+      </TouchableOpacity>
+   )
 }

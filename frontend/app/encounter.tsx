@@ -1,7 +1,7 @@
 import {
   View, Text, ActivityIndicator, StyleSheet
 } from "react-native";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useEncounterStore } from "../store/useEncounterStore";
@@ -17,12 +17,20 @@ export default function EncounterScreen() {
   const [simTurn, setSimTurn] = useState(0);
   const [simStarted, setSimStarted] = useState(false);
 
+  const safeBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/adventure");
+    }
+  }, [router]);
+
   // If no battle data, immediately go back
   useEffect(() => {
     if (!simBattle) {
-      router.back();
+      safeBack();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [simBattle, safeBack]);
 
   // 3s delay before animation starts (gives both players time to see the screen)
   useEffect(() => {
@@ -54,11 +62,11 @@ export default function EncounterScreen() {
         setSimBattle(null);
         setSimTurn(0);
         setSimStarted(false);
-        router.back();
+        safeBack();
       }, 2500);
       return () => clearTimeout(t);
     }
-  }, [simBattle, simTurn, simStarted, router, setSimBattle]);
+  }, [simBattle, simTurn, simStarted, router, setSimBattle, safeBack]);
 
   // HP tracking
   const combatSim = useMemo(() => {

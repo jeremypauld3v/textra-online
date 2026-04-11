@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Modal } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Modal, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useState, useCallback, useMemo } from "react";
@@ -8,7 +8,7 @@ import Toast from "react-native-toast-message";
 
 import { useGameStore } from "../../store/useGameStore";
 
-const TOTAL_SLOTS = 20;
+const TOTAL_SLOTS = 100;
 const CATEGORIES = [
   { label: 'All', value: 'ALL' },
   { label: 'Gear', value: 'EQUIPMENT' },
@@ -25,13 +25,17 @@ export default function InventoryScreen() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [equippedIds, setEquippedIds] = useState<string[]>([]);
+  
+  // Market Listing States
+  const [isSellModalVisible, setIsSellModalVisible] = useState(false);
+  const [sellQty, setSellQty] = useState("1");
+  const [sellPrice, setSellPrice] = useState("10");
 
   const fetchInventory = useCallback(async () => {
     try {
       const data = await gameApi.getInventory();
       setItems(data.inventory);
       
-      // Extract all non-null equipment IDs
       const eq = data.equipment;
       const activeIds = [
          eq.equippedWeaponId, 
@@ -86,11 +90,32 @@ export default function InventoryScreen() {
     }
   };
 
-  const handleSellItem = async (item: InventoryItem) => {
+  const handleSellPress = () => {
+    if (!selectedItem) return;
+    setSellQty("1");
+    setSellPrice("50");
+    setIsSellModalVisible(true);
+  };
+
+  const handleConfirmSell = async () => {
+    if (!selectedItem) return;
+    const qty = parseInt(sellQty);
+    const price = parseInt(sellPrice);
+
+    if (isNaN(qty) || qty <= 0 || qty > selectedItem.quantity) {
+       Toast.show({ type: "error", text1: "Invalid Quantity" });
+       return;
+    }
+    if (isNaN(price) || price <= 0) {
+       Toast.show({ type: "error", text1: "Invalid Price" });
+       return;
+    }
+
     try {
       setIsActionLoading(true);
-      await gameApi.listItem(item.id, 1, 50); // Default: sell 1 for 50 gold
-      Toast.show({ type: "success", text1: "Listed!", text2: "Item listed on the marketplace for 50G" });
+      await gameApi.listItem(selectedItem.id, qty, price);
+      Toast.show({ type: "success", text1: "Listed!", text2: `${qty} items listed for ${price}G each` });
+      setIsSellModalVisible(false);
       setSelectedItem(null);
       fetchInventory();
     } catch (e: any) {
@@ -109,7 +134,6 @@ export default function InventoryScreen() {
        });
     }
 
-    // Sort: Equipped items first
     return [...list].sort((a, b) => {
        const aEquipped = equippedIds.includes(a.id);
        const bEquipped = equippedIds.includes(b.id);
@@ -119,7 +143,6 @@ export default function InventoryScreen() {
     });
   }, [items, selectedCategory, itemTemplates, equippedIds]);
 
-  // Fill the rest with empty slots for the 5x4 grid
   const gridData = useMemo(() => {
     const data = [...filteredItems];
     while (data.length < TOTAL_SLOTS) {
@@ -208,22 +231,10 @@ export default function InventoryScreen() {
             }
           />
         )}
-
-        {/* Bottom Gear Preview (Mock) */}
-        <View className="mt-6 mb-10 p-6 bg-slate-900/30 border border-slate-800 rounded-[30px]">
-             <Text className="text-slate-600 font-black uppercase text-[9px] mb-4 tracking-[2px]">Quick Gear</Text>
-             <View className="flex-row justify-between">
-                {['shield-outline', 'flash-outline', 'color-wand-outline'].map((icon, i) => (
-                   <View key={i} className="w-12 h-12 bg-slate-900 border border-slate-800 rounded-xl items-center justify-center">
-                      <Ionicons name={icon as any} size={18} color="#334155" />
-                   </View>
-                ))}
-             </View>
-        </View>
       </View>
 
       {/* 📦 ITEM DETAIL MODAL */}
-      <Modal visible={!!selectedItem} transparent animationType="fade">
+      <Modal visible={!!selectedItem && !isSellModalVisible} transparent animationType="fade">
          <TouchableOpacity 
             activeOpacity={1} 
             onPress={() => setSelectedItem(null)}
@@ -320,7 +331,7 @@ export default function InventoryScreen() {
                            )}
 
                            <TouchableOpacity 
-                              onPress={() => handleSellItem(selectedItem)}
+                              onPress={handleSellPress}
                               disabled={isActionLoading}
                               className="bg-amber-600/20 border border-amber-500/30 p-5 rounded-3xl items-center"
                            >
@@ -339,6 +350,78 @@ export default function InventoryScreen() {
                })()}
             </TouchableOpacity>
          </TouchableOpacity>
+      </Modal>
+
+      {/* 🏷️ MARKET LISTING MODAL */}
+      <Modal visible={isSellModalVisible} transparent animationType="slide">
+         <View className="flex-1 bg-black/60 justify-end">
+            <View className="bg-slate-900 border-t border-slate-800 p-10 rounded-t-[50px] shadow-2xl">
+               <Text className="text-2xl font-black text-white italic uppercase mb-8">List on Marketplace</Text>
+               
+               {/* Inputs */}
+               <View className="space-y-6 mb-10">
+                  <View>
+                     <Text className="text-slate-500 font-black uppercase text-[10px] mb-3 ml-1 tracking-widest">Quantity (Max: {selectedItem?.quantity})</Text>
+                     <View className="bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 flex-row items-center">
+                        <TextInput 
+                           className="flex-1 text-white font-black text-lg"
+                           value={sellQty}
+                           onChangeText={setSellQty}
+                           keyboardType="numeric"
+                           placeholder="1"
+                           placeholderTextColor="#334155"
+                        />
+                        <Ionicons name="layers-outline" size={20} color="#475569" />
+                     </View>
+                  </View>
+
+                  <View>
+                     <Text className="text-slate-500 font-black uppercase text-[10px] mb-3 ml-1 tracking-widest">Price per unit (Gold)</Text>
+                     <View className="bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 flex-row items-center">
+                        <TextInput 
+                           className="flex-1 text-amber-400 font-black text-lg"
+                           value={sellPrice}
+                           onChangeText={setSellPrice}
+                           keyboardType="numeric"
+                           placeholder="50"
+                           placeholderTextColor="#334155"
+                        />
+                        <Ionicons name="cash-outline" size={20} color="#475569" />
+                     </View>
+                  </View>
+               </View>
+
+               {/* Summary */}
+               <View className="bg-slate-950/50 p-6 rounded-3xl border border-slate-800/50 mb-8">
+                  <View className="flex-row justify-between mb-2">
+                     <Text className="text-slate-500 font-bold uppercase text-[10px]">Total Price</Text>
+                     <Text className="text-amber-400 font-black text-lg">{(parseInt(sellQty) || 0) * (parseInt(sellPrice) || 0)}G</Text>
+                  </View>
+                  <View className="flex-row justify-between">
+                     <Text className="text-slate-500 font-bold uppercase text-[10px]">Market Fee (5%)</Text>
+                     <Text className="text-slate-500 font-bold">-{Math.floor(((parseInt(sellQty) || 0) * (parseInt(sellPrice) || 0)) * 0.05)}G</Text>
+                  </View>
+               </View>
+
+               <View className="flex-row pb-6">
+                  <TouchableOpacity 
+                     onPress={() => setIsSellModalVisible(false)}
+                     className="flex-1 bg-slate-800 p-5 rounded-3xl mr-2 items-center"
+                  >
+                     <Text className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                     onPress={handleConfirmSell}
+                     disabled={isActionLoading}
+                     className="flex-2 bg-indigo-600 p-5 rounded-3xl ml-2 items-center shadow-lg shadow-indigo-500/20"
+                  >
+                     <Text className="text-white font-black uppercase text-[10px] tracking-widest">
+                        {isActionLoading ? "..." : "List Item"}
+                     </Text>
+                  </TouchableOpacity>
+               </View>
+            </View>
+         </View>
       </Modal>
 
     </SafeAreaView>
