@@ -10,20 +10,23 @@ export declare class CraftingService {
     getRecipes(): Promise<({
         ingredients: ({
             item: {
-                statEnergy: number | null;
-                statHeal: number | null;
-                statDef: number | null;
-                statAtk: number | null;
-                statAgi: number | null;
-                statStr: number | null;
                 code: string;
                 name: string;
                 emoji: string;
-                rarity: string;
                 type: string;
                 description: string;
+                statAtk: number | null;
+                statDef: number | null;
+                statStr: number | null;
+                statAgi: number | null;
+                statInt: number | null;
+                statLuk: number | null;
+                statDex: number | null;
+                statHeal: number | null;
+                statEnergy: number | null;
                 levelReq: number;
                 equipSlot: string | null;
+                rarityId: string;
             };
         } & {
             id: string;
@@ -32,20 +35,23 @@ export declare class CraftingService {
             recipeId: string;
         })[];
         resultItem: {
-            statEnergy: number | null;
-            statHeal: number | null;
-            statDef: number | null;
-            statAtk: number | null;
-            statAgi: number | null;
-            statStr: number | null;
             code: string;
             name: string;
             emoji: string;
-            rarity: string;
             type: string;
             description: string;
+            statAtk: number | null;
+            statDef: number | null;
+            statStr: number | null;
+            statAgi: number | null;
+            statInt: number | null;
+            statLuk: number | null;
+            statDex: number | null;
+            statHeal: number | null;
+            statEnergy: number | null;
             levelReq: number;
             equipSlot: string | null;
+            rarityId: string;
         };
     } & {
         levelReq: number;
@@ -67,6 +73,8 @@ export declare class CraftingService {
             rolledDef: number | null;
             rolledStr: number | null;
             rolledAgi: number | null;
+            rolledInt: number | null;
+            rolledLuk: number | null;
         } | null;
     }>;
 }

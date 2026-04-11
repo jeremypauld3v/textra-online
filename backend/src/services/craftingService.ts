@@ -77,12 +77,16 @@ export class CraftingService {
     let rolledDef: number | null = null;
     let rolledStr: number | null = null;
     let rolledAgi: number | null = null;
+    let rolledInt: number | null = null;
+    let rolledLuk: number | null = null;
 
     if (isEquipment) {
       rolledAtk = this.rollStat(recipe.resultItem.statAtk || 0);
       rolledDef = this.rollStat(recipe.resultItem.statDef || 0);
       rolledStr = this.rollStat(recipe.resultItem.statStr || 0);
       rolledAgi = this.rollStat(recipe.resultItem.statAgi || 0);
+      rolledInt = this.rollStat((recipe.resultItem as any).statInt || 0);
+      rolledLuk = this.rollStat((recipe.resultItem as any).statLuk || 0);
     }
 
     // 7. Execute Craft (Atomic Transaction)
@@ -108,17 +112,17 @@ export class CraftingService {
         characterId,
         recipe.resultItemCode,
         1,
-        { rolledAtk, rolledDef, rolledStr, rolledAgi },
+        { rolledAtk, rolledDef, rolledStr, rolledAgi, rolledInt, rolledLuk },
         tx
       );
     });
 
-    return { 
-      success: true, 
-      message: isEquipment 
-        ? `Item forged! Stats rolled: ATK ${rolledAtk || 0}, DEF ${rolledDef || 0}, STR ${rolledStr || 0}, AGI ${rolledAgi || 0}`
+    return {
+      success: true,
+      message: isEquipment
+        ? `Item forged! ATK:${rolledAtk||0} DEF:${rolledDef||0} STR:${rolledStr||0} AGI:${rolledAgi||0} INT:${rolledInt||0} LUK:${rolledLuk||0}`
         : "Item crafted successfully!",
-      rolledStats: isEquipment ? { rolledAtk, rolledDef, rolledStr, rolledAgi } : null
+      rolledStats: isEquipment ? { rolledAtk, rolledDef, rolledStr, rolledAgi, rolledInt, rolledLuk } : null
     };
   }
 }

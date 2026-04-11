@@ -14,9 +14,10 @@ class GameDataManager {
         if (now - this.lastUpdate < this.CACHE_TTL && this.itemCache.size > 0)
             return;
         console.log("🔄 Syncing Game Metadata from Database...");
-        const [items, monsters] = await Promise.all([
-            prisma.itemTemplate.findMany(),
-            prisma.monsterTemplate.findMany({ include: { lootTable: true } })
+        const [items, monsters, rarities] = await Promise.all([
+            prisma.itemTemplate.findMany({ include: { rarity: true } }),
+            prisma.monsterTemplate.findMany({ include: { lootTable: { include: { item: { include: { rarity: true } } } } } }),
+            prisma.rarity.findMany()
         ]);
         this.itemCache.clear();
         items.forEach(i => this.itemCache.set(i.code, i));
@@ -42,8 +43,19 @@ class GameDataManager {
         return monsters[Math.floor(Math.random() * monsters.length)];
     }
     async getResourceNodes() {
-        // These are static enough to fetch directly or cache similarly
-        return prisma.resourceNodeTemplate.findMany();
+        return prisma.resourceNodeTemplate.findMany({
+            include: {
+                lootTable: {
+                    include: {
+                        item: {
+                            include: {
+                                rarity: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 }
 export const gameDataManager = new GameDataManager();

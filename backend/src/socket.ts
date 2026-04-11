@@ -340,8 +340,22 @@ export function initSocket(fastify: FastifyInstance) {
        }
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       console.log(`👤 User disconnected: ${userId}`);
+
+      // 🛑 OFFLINE AUTO-PAUSE
+      try {
+        const char = await prisma.character.findFirst({ where: { userId } });
+        if (char && (char.actionStatus === "TRAVELING_OUT" || char.actionStatus === "TRAVELING_IN" || char.actionStatus === "CAMPING")) {
+           await prisma.character.update({
+             where: { id: char.id },
+             data: { isPaused: true }
+           });
+           console.log(`⏸️ Auto-Paused character ${char.name} for offline safety.`);
+        }
+      } catch (e) {
+        console.error("Auto-pause failed:", e);
+      }
 
       // Clean up any pending outgoing trade request
       const pending = pendingTradeRequests.get(userId);

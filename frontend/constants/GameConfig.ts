@@ -1,0 +1,16 @@
+/**
+ * ⚙️ Game Configuration
+ */
+export const GAME_CONFIG = {
+  // 🕒 Time & Delays (ms)
+  BATTLE_START_DELAY: 3000,
+  BATTLE_TURN_DELAY: 1200,
+  BATTLE_TOAST_DURATION: 3500,
+  BATTLE_END_DELAY: 2500,
+  
+  STATUS_REFRESH_INTERVAL: 5000,
+  DECISION_COUNTDOWN_SECONDS: 30,
+
+  // 🗺️ Visual Settings
+  MAX_BATTLE_LOGS: 5,
+};

@@ -16,6 +16,7 @@ const server = Fastify({
     },
 });
 import { gameRoutes } from "./routes/game.js";
+import { initSocket } from "./socket.js";
 async function main() {
     await server.register(cors, {
         origin: "*",
@@ -23,6 +24,8 @@ async function main() {
     await server.register(jwt, {
         secret: process.env.JWT_SECRET || "supersecretjwtkey_change_in_production",
     });
+    // Initialize Socket.io
+    initSocket(server);
     server.get("/health", async (request, reply) => {
         return { status: "ok" };
     });

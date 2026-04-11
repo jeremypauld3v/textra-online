@@ -1,0 +1,41 @@
+import { View, Text } from "react-native";
+
+interface ScreenHeaderProps {
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  rightElement?: React.ReactNode;
+  className?: string;
+}
+
+export default function ScreenHeader({
+  title,
+  subtitle,
+  badge,
+  rightElement,
+  className = "",
+}: ScreenHeaderProps) {
+  return (
+    <View className={`flex-row justify-between items-center mb-6 ${className}`}>
+      <View className="flex-1">
+        {subtitle && (
+          <Text className="text-slate-500 font-bold uppercase text-[8px] tracking-wider mb-0.5 font-pixel-bold">
+            {subtitle}
+          </Text>
+        )}
+        <Text className="text-2xl font-bold text-white italic uppercase tracking-normal font-pixel-bold">
+          {title}
+        </Text>
+      </View>
+      
+      <View className="flex-row items-center">
+        {badge && (
+          <View className="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 mr-3">
+            <Text className="text-white font-bold italic text-xs font-pixel-bold">{badge}</Text>
+          </View>
+        )}
+        {rightElement}
+      </View>
+    </View>
+  );
+}

@@ -60,7 +60,9 @@ export class MarketService {
           rolledAtk: invItem.rolledAtk,
           rolledDef: invItem.rolledDef,
           rolledStr: invItem.rolledStr,
-          rolledAgi: invItem.rolledAgi
+          rolledAgi: invItem.rolledAgi,
+          rolledInt: invItem.rolledInt,
+          rolledLuk: invItem.rolledLuk
         }
       });
     });
@@ -118,7 +120,9 @@ export class MarketService {
           rolledAtk: listing.rolledAtk, 
           rolledDef: listing.rolledDef, 
           rolledStr: listing.rolledStr, 
-          rolledAgi: listing.rolledAgi 
+          rolledAgi: listing.rolledAgi,
+          rolledInt: listing.rolledInt, 
+          rolledLuk: listing.rolledLuk
         },
         tx
       );
@@ -161,7 +165,9 @@ export class MarketService {
             rolledAtk: listing.rolledAtk,
             rolledDef: listing.rolledDef,
             rolledStr: listing.rolledStr,
-            rolledAgi: listing.rolledAgi
+            rolledAgi: listing.rolledAgi,
+            rolledInt: listing.rolledInt,
+            rolledLuk: listing.rolledLuk
           }
         });
       } else {

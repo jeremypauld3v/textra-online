@@ -15,9 +15,13 @@ export class DungeonService {
         const dungeon = await prisma.dungeonTemplate.findFirst({
             where: {
                 minDepth: { lte: character.currentDepth },
+                OR: [
+                    { maxDepth: null },
+                    { maxDepth: { gte: character.currentDepth } }
+                ],
                 minLevel: { lte: character.level }
             },
-            orderBy: { minDepth: "desc" } // Pick the most relevant high-level dungeon for this depth
+            orderBy: { minDepth: "desc" }
         });
         if (!dungeon)
             return null;
@@ -134,11 +138,20 @@ export class DungeonService {
             const treasureItems = ["IRON_ORE", "SILVER_ORE", "HERB", "HEALTH_POTION"];
             const lootCode = treasureItems[Math.floor(Math.random() * treasureItems.length)];
             const qty = Math.floor(Math.random() * 3) + 1;
-            await prisma.inventoryItem.upsert({
-                where: { characterId_itemCode: { characterId, itemCode: lootCode } },
-                update: { quantity: { increment: qty } },
-                create: { characterId, itemCode: lootCode, quantity: qty }
+            const existing = await prisma.inventoryItem.findFirst({
+                where: { characterId, itemCode: lootCode }
             });
+            if (existing) {
+                await prisma.inventoryItem.update({
+                    where: { id: existing.id },
+                    data: { quantity: { increment: qty } }
+                });
+            }
+            else {
+                await prisma.inventoryItem.create({
+                    data: { characterId, itemCode: lootCode, quantity: qty }
+                });
+            }
             // Mark floor cleared, advance
             dungeon.floors[floorIndex].cleared = true;
             const nextIndex = floorIndex + 1;
@@ -237,11 +250,20 @@ export class DungeonService {
         // Loot on boss kill
         const loot = [];
         if (floor.type === "BOSS" && floor.lootItemCode) {
-            await prisma.inventoryItem.upsert({
-                where: { characterId_itemCode: { characterId, itemCode: floor.lootItemCode } },
-                update: { quantity: { increment: 1 } },
-                create: { characterId, itemCode: floor.lootItemCode, quantity: 1 }
+            const existing = await prisma.inventoryItem.findFirst({
+                where: { characterId, itemCode: floor.lootItemCode }
             });
+            if (existing) {
+                await prisma.inventoryItem.update({
+                    where: { id: existing.id },
+                    data: { quantity: { increment: 1 } }
+                });
+            }
+            else {
+                await prisma.inventoryItem.create({
+                    data: { characterId, itemCode: floor.lootItemCode, quantity: 1 }
+                });
+            }
             loot.push({ itemCode: floor.lootItemCode, quantity: 1 });
         }
         const nextMaxHp = character.maxHp + (levelGain * 10);

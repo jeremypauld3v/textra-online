@@ -13,15 +13,54 @@ declare class GameDataManager {
     getAllItems(): Promise<any[]>;
     getMonster(name: string): Promise<any>;
     getRandomMonster(): Promise<any>;
-    getResourceNodes(): Promise<{
+    getResourceNodes(): Promise<({
+        lootTable: ({
+            item: {
+                rarity: {
+                    name: string;
+                    id: string;
+                    rank: number;
+                    color: string;
+                    dropRateModifier: number;
+                    hasGlow: boolean;
+                };
+            } & {
+                code: string;
+                name: string;
+                emoji: string;
+                type: string;
+                description: string;
+                statAtk: number | null;
+                statDef: number | null;
+                statStr: number | null;
+                statAgi: number | null;
+                statInt: number | null;
+                statLuk: number | null;
+                statDex: number | null;
+                statHeal: number | null;
+                statEnergy: number | null;
+                levelReq: number;
+                equipSlot: string | null;
+                rarityId: string;
+            };
+        } & {
+            id: string;
+            chance: number;
+            minQuantity: number;
+            maxQuantity: number;
+            depthBonus: number;
+            monsterTemplateId: string | null;
+            resourceNodeTemplateId: string | null;
+            itemCode: string;
+        })[];
+    } & {
         name: string;
         type: string;
         id: string;
-        itemCode: string;
         icon: string;
         baseHp: number;
         xpReward: number;
-    }[]>;
+    })[]>;
 }
 export declare const gameDataManager: GameDataManager;
 export {};

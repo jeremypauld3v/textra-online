@@ -34,6 +34,7 @@ model Character {
   hp               Int             @default(100)
   maxHp            Int             @default(100)
   lastPulseAt      DateTime?       @default(now())
+  isPaused         Boolean         @default(false)
   pendingEncounter Json?
   previousStatus   String?
   statPoints       Int             @default(0)
@@ -41,10 +42,15 @@ model Character {
   currentDepth     Int             @default(0)
   dungeonData      Json?
   dungeonProgress  Int?
-  equippedBootsId  String?
-  equippedChestId  String?
-  equippedHelmetId String?
-  equippedWeaponId String?
+  equippedWeaponId  String?
+  equippedChestId   String?
+  equippedHelmetId  String?
+  equippedBootsId   String?
+  equippedGlovesId  String?
+  equippedCapeId    String?
+  equippedNecklaceId String?
+  equippedRing1Id   String?
+  equippedRing2Id   String?
   gold             Int             @default(100)
   battleLogs       BattleLog[]
   user             User            @relation(fields: [userId], references: [id])
@@ -110,6 +116,8 @@ model InventoryItem {
   rolledDef   Int?
   rolledStr   Int?
   rolledAgi   Int?
+  rolledInt   Int?
+  rolledLuk   Int?
   character   Character    @relation(fields: [characterId], references: [id])
   template    ItemTemplate @relation(fields: [itemCode], references: [code])
 }
@@ -129,13 +137,17 @@ model ItemTemplate {
   code           String             @id
   name           String
   emoji          String
-  rarity         String
+  rarityId       String
+  rarity         Rarity             @relation(fields: [rarityId], references: [id])
   type           String
-  description    String
+  description    String             @default("")
   statAtk        Int?               @default(0)
   statDef        Int?               @default(0)
   statStr        Int?               @default(0)
   statAgi        Int?               @default(0)
+  statInt        Int?               @default(0)
+  statLuk        Int?               @default(0)
+  statDex        Int?               @default(0)
   statHeal       Int?               @default(0)
   statEnergy     Int?               @default(0)
   levelReq       Int                @default(1)
@@ -147,6 +159,16 @@ model ItemTemplate {
   ingredients    RecipeIngredient[]
 }
 
+model Rarity {
+  id               String         @id // e.g., "COMMON", "MYTHICAL"
+  name             String         // e.g., "Common", "Mythical"
+  rank             Int            // 1 to 6 (for ordering)
+  color            String         // Hex color for UI
+  dropRateModifier Float          @default(1.0)
+  hasGlow          Boolean        @default(false)
+  items            ItemTemplate[]
+}
+
 model MonsterTemplate {
   id        String      @id @default(uuid())
   name      String      @unique
@@ -154,16 +176,22 @@ model MonsterTemplate {
   attack    Int
   defense   Int
   expReward Int
+  minDepth  Int         @default(0)
   lootTable LootTable[]
 }
 
 model LootTable {
-  id                String          @id @default(uuid())
-  monsterTemplateId String
-  itemCode          String
-  chance            Float
-  item              ItemTemplate    @relation(fields: [itemCode], references: [code])
-  monster           MonsterTemplate @relation(fields: [monsterTemplateId], references: [id])
+  id                    String                @id @default(uuid())
+  monsterTemplateId     String?
+  resourceNodeTemplateId String?
+  itemCode              String
+  chance                Float
+  minQuantity           Int                   @default(1)
+  maxQuantity           Int                   @default(1)
+  depthBonus            Float                 @default(0.0)
+  item                  ItemTemplate          @relation(fields: [itemCode], references: [code])
+  monster               MonsterTemplate?      @relation(fields: [monsterTemplateId], references: [id])
+  resourceNode          ResourceNodeTemplate? @relation(fields: [resourceNodeTemplateId], references: [id])
 }
 
 model CraftingRecipe {
@@ -193,6 +221,8 @@ model MarketListing {
   rolledDef Int?
   rolledStr Int?
   rolledAgi Int?
+  rolledInt Int?
+  rolledLuk Int?
   createdAt DateTime     @default(now())
   template  ItemTemplate @relation(fields: [itemCode], references: [code])
   seller    Character    @relation(fields: [sellerId], references: [id])
@@ -203,6 +233,7 @@ model DungeonTemplate {
   name           String  @unique
   description    String
   minDepth       Int     @default(0)
+  maxDepth       Int?    // Trigger range end
   minLevel       Int     @default(1)
   floorCount     Int     @default(3)
   bossName       String
@@ -215,11 +246,11 @@ model DungeonTemplate {
 }
 
 model ResourceNodeTemplate {
-  id       String @id @default(uuid())
-  name     String @unique
-  type     String
-  icon     String
-  itemCode String
-  baseHp   Int    @default(20)
-  xpReward Int    @default(5)
+  id        String      @id @default(uuid())
+  name      String      @unique
+  type      String
+  icon      String
+  baseHp    Int         @default(20)
+  xpReward  Int         @default(5)
+  lootTable LootTable[]
 }

@@ -1,14 +1,36 @@
-import { View, Text, TouchableOpacity, Modal, ActivityIndicator, Alert, FlatList } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useFocusEffect, useRouter, usePathname } from "expo-router";
-import { gameApi, CharacterStatus, BattleLogPayload } from "../../api/game";
+import { useFocusEffect, usePathname, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import Toast from "react-native-toast-message";
-import { useAuthStore } from "../../store/useAuthStore";
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from "react-native-reanimated";
-import { useGameStore } from "../../store/useGameStore";
+import { BattleLogPayload, CharacterStatus, gameApi } from "../../api/game";
 import { useSocket } from "../../context/SocketContext";
+import { useAuthStore } from "../../store/useAuthStore";
 import { useEncounterStore } from "../../store/useEncounterStore";
+import { useGameStore } from "../../store/useGameStore";
+
+// UI Components
+import BaseModal from "../../components/ui/BaseModal";
+import ProgressBar from "../../components/ui/ProgressBar";
+import StandardButton from "../../components/ui/StandardButton";
+
+// Constants
+import { GAME_CONFIG } from "../../constants/GameConfig";
+import { UI_STRINGS } from "../../constants/Strings";
 
 export default function AdventureScreen() {
   const isMetadataLoaded = useGameStore((state) => state.isMetadataLoaded);
@@ -19,9 +41,12 @@ export default function AdventureScreen() {
   const [journalVisible, setJournalVisible] = useState(false);
   const setSimBattle = useEncounterStore((s) => s.setSimBattle);
   const [isResolving, setIsResolving] = useState(false);
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(
+    GAME_CONFIG.DECISION_COUNTDOWN_SECONDS,
+  );
   const timerActiveRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isResolvingRef = useRef(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -67,10 +92,14 @@ export default function AdventureScreen() {
           isWin: data.isWin,
           goldStolen: data.goldStolen,
         });
-        if (pathname !== '/encounter') router.push('/encounter');
+        if (pathname !== "/encounter") router.push("/encounter");
       });
       socket.on("pvp_fled", (data: any) => {
-        Toast.show({ type: 'info', text1: '⚡ Escaped!', text2: data.message || 'Target fled!' });
+        Toast.show({
+          type: "info",
+          text1: "⚡ Escaped!",
+          text2: data.message || "Target fled!",
+        });
         fetchStatus();
       });
     }
@@ -86,123 +115,199 @@ export default function AdventureScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchStatus();
-      const interval = setInterval(fetchStatus, 5000);
+      const interval = setInterval(
+        fetchStatus,
+        GAME_CONFIG.STATUS_REFRESH_INTERVAL,
+      );
       return () => clearInterval(interval);
-    }, [fetchStatus])
+    }, [fetchStatus]),
   );
 
   // 🎭 Character Animation Logic
   useEffect(() => {
-    const isMoving = character?.actionStatus === "TRAVELING_OUT" || character?.actionStatus === "TRAVELING_IN";
+    const isMoving =
+      character?.actionStatus === "TRAVELING_OUT" ||
+      character?.actionStatus === "TRAVELING_IN";
     translateY.value = 0;
-    
+
     if (isMoving) {
       translateY.value = withRepeat(
         withSequence(
           withTiming(-20, { duration: 250 }),
-          withTiming(0, { duration: 250 })
+          withTiming(0, { duration: 250 }),
         ),
-        -1)
+        -1,
+      );
     } else {
       translateY.value = withRepeat(
         withSequence(
           withTiming(-5, { duration: 2000 }),
-          withTiming(0, { duration: 2000 })
+          withTiming(0, { duration: 2000 }),
         ),
-        -1)
+        -1,
+      );
     }
   }, [character?.actionStatus, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => {
-    'worklet';
+    "worklet";
     return {
       transform: [{ translateY: translateY.value }],
     };
   }, [translateY]);
 
-
   // ── Encounter resolve — handles all types inline ─────────────────────────
-  const resolveEncounter = useCallback(async (action: "attack" | "skip" | "gather" | "enter_dungeon") => {
-    if (isResolving) return;
-    try {
-      setIsResolving(true);
-      const prevEncounter = character?.pendingEncounter as any;
-      const prevChar = character;
-      const result = await gameApi.resolveEncounter(action);
+  const resolveEncounter = useCallback(
+    async (action: "attack" | "skip" | "gather" | "enter_dungeon") => {
+      if (isResolving) return;
 
-      if (prevChar && result.updatedChar && result.updatedChar.level > prevChar.level) {
-        Toast.show({ type: 'success', text1: '✨ LEVEL UP!', text2: `Level ${result.updatedChar.level} reached!`, visibilityTime: 3000 });
+      try {
+        setIsResolving(true);
+        isResolvingRef.current = true;
+        const prevEncounter = character?.pendingEncounter as any;
+        const prevChar = character;
+
+        const result = await gameApi.resolveEncounter(action);
+
+        if (
+          prevChar &&
+          result.updatedChar &&
+          result.updatedChar.level > prevChar.level
+        ) {
+          Toast.show({
+            type: "success",
+            text1: UI_STRINGS.LEVEL_UP,
+            text2: UI_STRINGS.LEVEL_REACHED(result.updatedChar.level),
+            visibilityTime: 3000,
+          });
+        }
+
+        // PVP Step 1: P2 attacked → show PVP_WAITING
+        if (action === "attack" && prevEncounter?.type === "PVP") {
+          fetchStatus();
+          return;
+        }
+
+        // PVP Step 2 / PVE / Gathering → battle animation
+        if ((action === "attack" || action === "gather") && result.log) {
+          setSimBattle({
+            ...result,
+            isGathering: action === "gather",
+            startPlayerHp:
+              action === "attack" &&
+              (prevEncounter?.type === "PVP_INCOMING" ||
+                prevEncounter?.type === "PVP_WAITING")
+                ? result.startPlayerHp
+                : prevChar?.hp || 100,
+            startMaxPlayerHp:
+              action === "attack" &&
+              (prevEncounter?.type === "PVP_INCOMING" ||
+                prevEncounter?.type === "PVP_WAITING")
+                ? result.startMaxPlayerHp
+                : prevChar?.maxHp || 100,
+            startEnemyHp:
+              action === "gather"
+                ? result.startIntegrity || 20
+                : result.startEnemyHp || prevEncounter?.hp || 50,
+            startMaxEnemyHp:
+              action === "gather"
+                ? result.startIntegrity || 20
+                : result.startMaxEnemyHp || prevEncounter?.maxHp || 50,
+            playerName: result.playerName,
+            enemyName: result.enemyName,
+            isPvp:
+              prevEncounter?.type === "PVP_INCOMING" ||
+              prevEncounter?.type === "PVP_WAITING",
+            isWin: result.isWin,
+            goldStolen: result.goldStolen,
+          });
+          router.push("/encounter");
+          return;
+        }
+
+        fetchStatus();
+      } catch (error) {
+        console.error("Encounter resolution failed:", error);
+        Alert.alert("Error", UI_STRINGS.ERROR_RESOLVE_FAILED);
+        // Resurrect timer if it failed? No, fetchStatus will handle it.
+        fetchStatus();
+      } finally {
+        setIsResolving(false);
+        isResolvingRef.current = false;
       }
-
-      // PVP Step 1: P2 attacked → show PVP_WAITING
-      if (action === "attack" && prevEncounter?.type === "PVP") {
-        fetchStatus(); return;
-      }
-
-      // PVP Step 2 / PVE / Gathering → battle animation
-      if ((action === "attack" || action === "gather") && result.log) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerActiveRef.current = null;
-        setSimBattle({
-          ...result,
-          isGathering: action === "gather",
-          startPlayerHp: action === "attack" && (prevEncounter?.type === "PVP_INCOMING" || prevEncounter?.type === "PVP_WAITING")
-            ? result.startPlayerHp
-            : (prevChar?.hp || 100),
-          startMaxPlayerHp: action === "attack" && (prevEncounter?.type === "PVP_INCOMING" || prevEncounter?.type === "PVP_WAITING")
-            ? result.startMaxPlayerHp
-            : (prevChar?.maxHp || 100),
-          startEnemyHp: action === "gather" ? (result.startIntegrity || 20) : (result.startEnemyHp || prevEncounter?.hp || 50),
-          startMaxEnemyHp: action === "gather" ? (result.startIntegrity || 20) : (result.startMaxEnemyHp || prevEncounter?.maxHp || 50),
-          playerName: result.playerName,
-          enemyName: result.enemyName,
-          isPvp: prevEncounter?.type === "PVP_INCOMING" || prevEncounter?.type === "PVP_WAITING",
-          isWin: result.isWin,
-          goldStolen: result.goldStolen,
-        });
-        router.push('/encounter');
-        return;
-      }
-
-      fetchStatus();
-    } catch {
-      Alert.alert("Error", "Failed to resolve encounter");
-    } finally {
-      setIsResolving(false);
-    }
-  }, [character, isResolving, fetchStatus, router, setSimBattle]);
+    },
+    [character, isResolving, fetchStatus, router, setSimBattle],
+  );
 
   // ── Encounter AFK Timer — stable key prevents restarts ───────────────────
   const enc = character?.pendingEncounter as any;
-  const encounterKey = enc ? `${enc.type}::${enc.name ?? ''}::${enc.targetId ?? ''}` : null;
+  const encounterKey = enc
+    ? `${enc.type}::${enc.name ?? ""}::${enc.targetId ?? ""}`
+    : null;
 
+  // ── Encounter AFK Timer ───────────────────────────────────────────
   useEffect(() => {
-    if (!encounterKey) { timerActiveRef.current = null; return; }
-    if (timerActiveRef.current === encounterKey) return;
-    timerActiveRef.current = encounterKey;
-    setCountdown(30);
+    if (!encounterKey) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerActiveRef.current = null;
+      setCountdown(GAME_CONFIG.DECISION_COUNTDOWN_SECONDS);
+      return;
+    }
+
+    // Only restart countdown if the encounter actually changed
+    if (timerActiveRef.current !== encounterKey) {
+      timerActiveRef.current = encounterKey;
+      setCountdown(GAME_CONFIG.DECISION_COUNTDOWN_SECONDS);
+    }
+
+    // Always ensure one interval is running while we have an encounter
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
-      setCountdown(prev => {
+      // 🛡️ Pause countdown while resolving, but keep timer registered
+      if (isResolvingRef.current) return;
+
+      setCountdown((prev) => {
         if (prev <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
-          const encType = (character?.pendingEncounter as any)?.type;
-          resolveEncounter(encType === "PVP_WAITING" ? "attack" : "skip");
+
+          // Use the type from the encounter key we started with
+          const type = encounterKey.split("::")[0] as any;
+          resolveEncounter(type === "PVP_WAITING" ? "attack" : "skip");
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [encounterKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [encounterKey, resolveEncounter]); // Note: isResolving is handled via ref to avoid thrashing
 
   const [isProcessingDirection, setIsProcessingDirection] = useState(false);
 
   const handleSetDirection = async (dir: "OUT" | "IN" | "CAMP") => {
-    if (!character || isProcessingDirection || character.actionStatus === dir) return;
+    if (!character || isProcessingDirection || character.actionStatus === dir)
+      return;
     setIsProcessingDirection(true);
     try {
       await gameApi.travel(dir);
+      Toast.show({
+        type: "success",
+        text1:
+          dir === "OUT"
+            ? "Venturing Out"
+            : dir === "IN"
+              ? "Heading Home"
+              : "Setting Camp",
+        text2:
+          dir === "OUT"
+            ? "Stepping into the unknown... treasures and terrors await."
+            : dir === "IN"
+              ? "Turning back toward the safety of Valoria's walls."
+              : "Resting but keep your eyes open... the wilds are never truly silent.",
+        visibilityTime: 2500,
+      });
       fetchStatus();
     } catch (e: any) {
       Alert.alert("Action Failed", e.response?.data?.error || "Unknown error");
@@ -211,12 +316,13 @@ export default function AdventureScreen() {
     }
   };
 
-
   if (!isMetadataLoaded || !character) {
     return (
       <View className="flex-1 bg-slate-950 justify-center items-center">
         <ActivityIndicator color="#6366f1" size="large" />
-        <Text className="text-slate-500 font-bold mt-4 uppercase tracking-widest text-xs">Synchronizing world data...</Text>
+        <Text className="text-slate-500 font-bold mt-4 uppercase tracking-widest text-xs">
+          Synchronizing world data...
+        </Text>
       </View>
     );
   }
@@ -225,277 +331,421 @@ export default function AdventureScreen() {
   const dungeon = character.dungeonState;
   const isSafe = character.isSafe;
 
+  const getModalTitle = () => {
+    if (enc?.type === "GATHERING") return UI_STRINGS.ENCOUNTER_TYPES.GATHERING;
+    if (enc?.type === "DUNGEON") return UI_STRINGS.ENCOUNTER_TYPES.DUNGEON;
+    if (
+      enc?.type === "PVP" ||
+      enc?.type === "PVP_INCOMING" ||
+      enc?.type === "PVP_WAITING"
+    )
+      return UI_STRINGS.ENCOUNTER_TYPES.PVP;
+    return UI_STRINGS.ENCOUNTER_TYPES.HOSTILE;
+  };
+
   return (
     <View className="flex-1 bg-slate-950 px-6 pt-16">
-      
       {/* 🚀 HUD Status Plate (Top) */}
       <View className="flex-row justify-between items-start mb-6 w-full">
         <View className="flex-1">
-          <Text className={`font-bold uppercase text-[10px] tracking-[2px] mb-1 ${isSafe ? 'text-emerald-400' : 'text-rose-500'}`}>
+          <Text
+            className={`font-bold uppercase text-[8px] tracking-[1px] mb-0.5 ${isSafe ? "text-emerald-400" : "text-rose-500"}`}
+          >
             {isSafe ? "SAFE ZONE" : "DANGER ZONE"}
           </Text>
-          <Text className="text-3xl font-black text-white italic uppercase tracking-tighter mb-3">
-            {character.locationName}
+          <Text className="text-xl font-black text-white italic uppercase tracking-tighter mb-2">
+            {character?.currentDepth === 0
+              ? UI_STRINGS.VALORIA_CITY
+              : `${character?.currentDepth}${UI_STRINGS.LOCATION_PREFIX}`}
           </Text>
-          
-          <View className="space-y-2">
-            <View className="flex-row items-center w-48">
-               <View className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden mr-3">
-                  <View className="h-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]" style={{ width: `${(character.hp / character.maxHp) * 100}%` }} />
-               </View>
-               <Text className="text-slate-500 font-bold text-[8px] uppercase w-10">{Math.floor(character.hp)} HP</Text>
+
+          <View className="flex-row items-center space-x-4 w-44">
+            <View className="flex-1">
+              <ProgressBar
+                current={character.hp}
+                max={character.maxHp}
+                color="rose"
+                showValues={false}
+                size="sm"
+              />
             </View>
-            <View className="flex-row items-center w-48">
-               <View className="flex-1 h-1 bg-slate-900 rounded-full overflow-hidden mr-3">
-                  <View className="h-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]" style={{ width: `${(character.exp / (character.level * 100)) * 100}%` }} />
-               </View>
-               <Text className="text-slate-500 font-bold text-[8px] uppercase w-10">{character.exp} XP</Text>
+            <View className="flex-1">
+              <ProgressBar
+                current={character.exp}
+                max={character.level * 100}
+                color="indigo"
+                showValues={false}
+                size="sm"
+              />
             </View>
           </View>
         </View>
 
-        <TouchableOpacity onPress={() => setJournalVisible(true)} className="bg-slate-900 p-3 rounded-2xl border border-slate-800">
-          <Ionicons name="journal-outline" size={20} color="#818cf8" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+          <TouchableOpacity
+            disabled={
+              character.currentDepth === 0 ||
+              isProcessingDirection ||
+              character.actionStatus === "TRAVELING_IN"
+            }
+            onPress={() => handleSetDirection("IN")}
+            className={`w-12 h-12 rounded-2xl border items-center justify-center ${character.actionStatus === "TRAVELING_IN" ? "bg-emerald-600 border-emerald-400" : "bg-slate-900 border-slate-800"} ${character.currentDepth === 0 ? "opacity-20" : ""}`}
+          >
+            <Ionicons
+              name="home"
+              size={20}
+              color={
+                character.actionStatus === "TRAVELING_IN" ? "white" : "#64748B"
+              }
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setJournalVisible(true)}
+            className="bg-slate-900 w-12 h-12 rounded-2xl border border-slate-800 items-center justify-center"
+          >
+            <Ionicons name="journal-outline" size={20} color="#818CF8" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* 🧭 RADIAL DEPTH GAUGE & MODIFIERS */}
+      {/* 🧭 MODIFIER & DIFFICULTY BADGES */}
       {!inDungeon && (
-        <View>
-          <View className="flex-row items-center justify-center bg-slate-900/50 py-3 rounded-3xl border border-white/5 mb-3">
-            <Ionicons name="compass" size={14} color={isSafe ? "#10b981" : "#f43f5e"} style={{marginRight: 6}} />
-            <Text className="text-white font-black uppercase text-xs tracking-widest">
-               {character.currentDepth} KM FROM CITY {character.rankName !== 'Standard' && <Text className="text-indigo-400"> • {character.rankName}</Text>}
+        <View className="flex-row items-center space-x-3 mb-6">
+          <View className="flex-row bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg items-center">
+            <Text className="text-amber-500 text-[9px] mr-1">💎</Text>
+            <Text className="text-amber-200 text-[8px] font-bold uppercase font-sans">
+              +{character.lootBonus}%
             </Text>
           </View>
-
-          {/* 💎 MODIFIER PLATE */}
-          <View className="flex-row space-x-2 mb-4">
-             <View className="flex-1 bg-amber-500/10 border border-amber-500/20 py-2 rounded-2xl items-center flex-row justify-center">
-                <Text className="text-amber-500 text-xs mr-2">💎</Text>
-                <Text className="text-amber-200 text-[9px] font-black uppercase">+{character.lootBonus}% LOOT</Text>
-             </View>
-             <View className="flex-1 bg-cyan-500/10 border border-cyan-500/20 py-2 rounded-2xl items-center flex-row justify-center">
-                <Text className="text-cyan-500 text-xs mr-2">📈</Text>
-                <Text className="text-cyan-200 text-[9px] font-black uppercase">+{character.expBonus}% EXP</Text>
-             </View>
-             <View className="flex-1 bg-rose-500/10 border border-rose-500/20 py-2 rounded-2xl items-center flex-row justify-center">
-                  <View className="flex-row items-center">
-                    <View className="w-2 h-2 rounded-full bg-rose-500 mr-2 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
-                    <Text className="text-rose-400 font-black text-[10px] uppercase tracking-widest">{character.dangerLevel}</Text>
-                  </View>
-                  {nearbyCount > 0 && (
-                    <View className="flex-row items-center ml-4">
-                      <Ionicons name="people" size={12} color="#94a3b8" />
-                      <Text className="text-slate-400 font-bold text-[10px] ml-1 uppercase tracking-tighter">Nearby: {nearbyCount}</Text>
-                    </View>
-                  )}
-             </View>
+          <View className="flex-row bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 rounded-lg items-center">
+            <Text className="text-cyan-500 text-[9px] mr-1">📈</Text>
+            <Text className="text-cyan-200 text-[8px] font-bold uppercase font-sans">
+              +{character.expBonus}%
+            </Text>
           </View>
+          <View className="flex-row bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded-lg items-center">
+            <View className="w-1.5 h-1.5 rounded-full bg-rose-500 mr-2" />
+            <Text className="text-rose-400 font-bold text-[8px] uppercase font-sans">
+              {character.dangerLevel}
+            </Text>
+          </View>
+          {nearbyCount > 0 && (
+            <View className="flex-row items-center ml-auto bg-slate-900 px-2 py-1 rounded-lg">
+              <Ionicons name="people" size={10} color="#FFFFFF" />
+              <Text className="text-white font-bold text-[8px] ml-1 uppercase font-sans">
+                {nearbyCount}
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
       {/* 🎭 CHARACTER STAGE (Center) */}
       <View className="flex-1 justify-center items-center">
-         {inDungeon && dungeon ? (
-           <View className="items-center w-full">
-              <Text className="text-fuchsia-400 font-black uppercase text-xs tracking-[5px] mb-2">Floor {dungeon.floorIndex + 1} / {dungeon.totalFloors}</Text>
-              <Text className="text-3xl font-black text-white italic uppercase mb-8 text-center">{dungeon.name}</Text>
-              
-              <View className="bg-slate-900 border border-fuchsia-500/30 p-8 rounded-[40px] w-full items-center shadow-lg shadow-fuchsia-500/20 mb-8">
-                 <Text className="text-6xl mb-4">{dungeon.currentFloor.type === "BOSS" ? "👹" : dungeon.currentFloor.type === "TREASURE" ? "🎁" : "🧌"}</Text>
-                 <Text className="text-white font-bold text-xl">{dungeon.currentFloor.name || "Treasure Room"}</Text>
-                 {dungeon.currentFloor.type !== "TREASURE" && (
-                    <Text className="text-slate-400 mt-2 font-bold">HP: {dungeon.currentFloor.hp} / {dungeon.currentFloor.maxHp}</Text>
-                 )}
-              </View>
+        {inDungeon && dungeon ? (
+          <View className="items-center w-full">
+            <Text className="text-fuchsia-400 font-bold uppercase text-[8px] tracking-[5px] mb-2 font-sans">
+              Floor {dungeon.floorIndex + 1} / {dungeon.totalFloors}
+            </Text>
+            <Text className="text-2xl font-bold text-white italic uppercase mb-8 text-center font-sans">
+              {dungeon.name}
+            </Text>
 
-              <TouchableOpacity 
-                 disabled={isResolving}
-                 onPress={async () => {
-                    if (isResolving) return;
-                    setIsResolving(true);
-                    try {
-                       const result = await gameApi.dungeonFight();
-                       if (result.type === "COMBAT") {
-                          setSimBattle({ ...result, startPlayerHp: dungeon.hp, startMaxPlayerHp: dungeon.maxHp, startEnemyHp: dungeon.currentFloor.maxHp, startMaxEnemyHp: dungeon.currentFloor.maxHp });
-                          router.push('/encounter');
-                       } else if (result.type === "TREASURE") {
-                          Toast.show({ type: 'success', text1: 'Loot Found!', text2: result.message });
-                          fetchStatus();
-                       }
-                    } catch(e: any) {
-                       Alert.alert("Dungeon Error", e.response?.data?.error || "Unknown error");
-                    } finally {
-                       setIsResolving(false);
-                    }
-                 }}
-                 className="bg-fuchsia-600 p-5 rounded-3xl w-full items-center"
-              >
-                 <Text className="text-white font-black uppercase tracking-widest text-lg">
-                    {dungeon.currentFloor.type === "TREASURE" ? "Open Chest" : "Fight"}
-                 </Text>
-              </TouchableOpacity>
-           </View>
-         ) : (
-           <>
-             <Animated.View style={animatedStyle} className="items-center">
-                <View className="bg-slate-900/50 p-12 rounded-full border border-indigo-500/10 shadow-3xl">
-                   <Text className="text-8xl">
-                      {character.actionStatus === "TRAVELING_OUT" ? "🏃‍♂️" : character.actionStatus === "TRAVELING_IN" ? "🏃‍♂️" : character.currentDepth === 0 ? "🧘" : "⛺"}
-                   </Text>
-                </View>
-                <View className="w-24 h-4 bg-black/20 rounded-full mt-4 blur-xl" style={{ transform: [{ scale: 1.2 }] }} />
-             </Animated.View>
-             
-             <Text className="text-slate-700 font-black uppercase text-xs tracking-[8px] mt-10 text-center">
-                {character.actionStatus === "TRAVELING_OUT" ? "VENTURING OUT" : character.actionStatus === "TRAVELING_IN" ? "RETURNING HOME" : character.actionStatus === "CAMPING" ? "CAMPED / FARMING" : "IDLE"}
-             </Text>
-           </>
-         )}
+            <View className="bg-slate-900 border border-fuchsia-500/30 p-8 rounded-[40px] w-full items-center shadow-lg shadow-fuchsia-500/20 mb-8">
+              <Text className="text-6xl mb-4">
+                {dungeon.currentFloor.type === "BOSS"
+                  ? "👹"
+                  : dungeon.currentFloor.type === "TREASURE"
+                    ? "🎁"
+                    : "🧌"}
+              </Text>
+              <Text className="text-white font-bold text-lg font-sans">
+                {dungeon.currentFloor.name || "Treasure Room"}
+              </Text>
+              {dungeon.currentFloor.type !== "TREASURE" && (
+                <Text className="text-slate-500 mt-2 font-bold text-xs font-sans">
+                  HP: {dungeon.currentFloor.hp} / {dungeon.currentFloor.maxHp}
+                </Text>
+              )}
+            </View>
+
+            <StandardButton
+              label={
+                dungeon.currentFloor.type === "TREASURE"
+                  ? "Open Chest"
+                  : "Fight"
+              }
+              variant="primary"
+              className="w-full bg-fuchsia-600 border-fuchsia-500"
+              loading={isResolving}
+              onPress={async () => {
+                if (isResolving) return;
+                setIsResolving(true);
+                try {
+                  const result = await gameApi.dungeonFight();
+                  if (result.type === "COMBAT") {
+                    setSimBattle({
+                      ...result,
+                      startPlayerHp: dungeon.hp,
+                      startMaxPlayerHp: dungeon.maxHp,
+                      startEnemyHp: dungeon.currentFloor.maxHp,
+                      startMaxEnemyHp: dungeon.currentFloor.maxHp,
+                    });
+                    router.push("/encounter");
+                  } else if (result.type === "TREASURE") {
+                    Toast.show({
+                      type: "success",
+                      text1: "Loot Found!",
+                      text2: result.message,
+                    });
+                    fetchStatus();
+                  }
+                } catch (e: any) {
+                  Alert.alert(
+                    "Dungeon Error",
+                    e.response?.data?.error || "Unknown error",
+                  );
+                } finally {
+                  setIsResolving(false);
+                }
+              }}
+            />
+          </View>
+        ) : (
+          <>
+            <Animated.View style={animatedStyle} className="items-center">
+              <View className="bg-slate-900/50 p-10 rounded-full border border-white/10 shadow-3xl">
+                <Text className="text-6xl">
+                  {character.actionStatus === "TRAVELING_OUT"
+                    ? "🏃‍♂️"
+                    : character.actionStatus === "TRAVELING_IN"
+                      ? "🏃‍♂️"
+                      : character.currentDepth === 0
+                        ? "🧘"
+                        : "⛺"}
+                </Text>
+              </View>
+              <View
+                className="w-20 h-3 bg-black/20 rounded-full mt-4 blur-xl"
+                style={{ transform: [{ scale: 1.2 }] }}
+              />
+            </Animated.View>
+
+            <Text className="text-slate-700 font-bold uppercase text-[8px] tracking-[8px] mt-10 text-center font-sans">
+              {character.isPaused
+                ? "PAUSED"
+                : character.actionStatus === "TRAVELING_OUT"
+                  ? "VENTURING OUT"
+                  : character.actionStatus === "TRAVELING_IN"
+                    ? "RETURNING HOME"
+                    : character.actionStatus === "CAMPING"
+                      ? "CAMPED / FARMING"
+                      : "IDLE"}
+            </Text>
+          </>
+        )}
       </View>
 
-      {/* 🧭 MOVEMENT CONTROLS (Bottom) */}
+      {/* 🧭 ICON-BASED MOVEMENT CLUSTER (Bottom) */}
       {!inDungeon && (
-        <View className="pb-12 space-y-3">
-          <View className="flex-row space-x-3">
-            <TouchableOpacity 
-              disabled={isProcessingDirection || character.actionStatus === 'TRAVELING_OUT'}
-              onPress={() => handleSetDirection("OUT")} 
-              className={`flex-1 p-5 rounded-3xl flex-row justify-center items-center shadow-lg ${character.actionStatus === 'TRAVELING_OUT' ? 'bg-indigo-600 shadow-indigo-500/40 border border-indigo-400/50' : 'bg-slate-900 border border-slate-800'}`}
+        <View className="pb-10 space-y-6">
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 20,
+            }}
+          >
+            {/* CAMP */}
+            <TouchableOpacity
+              disabled={
+                isProcessingDirection || character.actionStatus === "CAMPING"
+              }
+              onPress={() => handleSetDirection("CAMP")}
+              className={`w-16 h-16 rounded-full border items-center justify-center ${character.actionStatus === "CAMPING" ? "bg-amber-600 border-amber-400" : "bg-slate-900 border-slate-800"}`}
             >
-              <Ionicons name="compass-outline" size={20} color={character.actionStatus === 'TRAVELING_OUT' ? "white" : "#6366f1"} />
-              <Text className={`font-black uppercase tracking-widest ml-3 ${character.actionStatus === 'TRAVELING_OUT' ? 'text-white' : 'text-slate-400'}`}>Venture Out</Text>
+              <Ionicons
+                name="bonfire"
+                size={24}
+                color={
+                  character.actionStatus === "CAMPING" ? "white" : "#FBBF24"
+                }
+              />
+              <Text
+                className={`text-[8px] font-bold uppercase mt-1 font-sans ${character.actionStatus === "CAMPING" ? "text-white" : "text-slate-600"}`}
+              >
+                Camp
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              disabled={isProcessingDirection || character.actionStatus === 'CAMPING'}
-              onPress={() => handleSetDirection("CAMP")} 
-              className={`flex-1 p-5 rounded-3xl flex-row justify-center items-center shadow-lg ${character.actionStatus === 'CAMPING' ? 'bg-amber-600 shadow-amber-500/40 border border-amber-400/50' : 'bg-slate-900 border border-slate-800'}`}
+            {/* VENTURE OUT */}
+            <TouchableOpacity
+              disabled={
+                isProcessingDirection ||
+                character.actionStatus === "TRAVELING_OUT"
+              }
+              onPress={() => handleSetDirection("OUT")}
+              className={`w-16 h-16 rounded-full border items-center justify-center ${character.actionStatus === "TRAVELING_OUT" ? "bg-white border-white" : "bg-slate-900 border-slate-800"}`}
             >
-              <Ionicons name="bonfire-outline" size={20} color={character.actionStatus === 'CAMPING' ? "white" : "#d97706"} />
-              <Text className={`font-black uppercase tracking-widest ml-3 ${character.actionStatus === 'CAMPING' ? 'text-white' : 'text-slate-400'}`}>Pitch Camp</Text>
+              <Ionicons
+                name="compass"
+                size={24}
+                color={
+                  character.actionStatus === "TRAVELING_OUT"
+                    ? "white"
+                    : "#FFFFFF"
+                }
+              />
+              <Text
+                className={`text-[8px] font-black uppercase mt-1 ${character.actionStatus === "TRAVELING_OUT" ? "text-white" : "text-slate-600"}`}
+              >
+                Venture
+              </Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity 
-            onPress={() => handleSetDirection("IN")} 
-            disabled={character.currentDepth === 0 || isProcessingDirection || character.actionStatus === 'TRAVELING_IN'}
-            className={`w-full p-5 rounded-3xl flex-row justify-center items-center shadow-lg ${character.actionStatus === 'TRAVELING_IN' ? 'bg-emerald-600 shadow-emerald-500/40 border border-emerald-400/50' : character.currentDepth === 0 ? 'bg-slate-900 opacity-30 shadow-none' : 'bg-slate-900 border border-slate-800'}`}
-          >
-            <Ionicons name="home-outline" size={20} color={character.actionStatus === 'TRAVELING_IN' ? "white" : "#10b981"} />
-            <Text className={`font-black uppercase tracking-widest ml-3 ${character.actionStatus === 'TRAVELING_IN' ? 'text-white' : character.currentDepth === 0 ? 'text-slate-700' : 'text-slate-400'}`}>Return Home</Text>
-          </TouchableOpacity>
+          {/* PAUSE CONTROL */}
+          {(character.actionStatus === "TRAVELING_OUT" ||
+            character.actionStatus === "TRAVELING_IN" ||
+            character.actionStatus === "CAMPING") && (
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await gameApi.pause(!character.isPaused);
+                  fetchStatus();
+                } catch {
+                  Alert.alert("Error", "Failed to toggle pause");
+                }
+              }}
+              className="flex-row items-center justify-center py-2"
+            >
+              <Ionicons
+                name={character.isPaused ? "play-circle" : "pause-circle"}
+                size={16}
+                color={character.isPaused ? "#4ade80" : "#94a3b8"}
+              />
+              <Text
+                className={`ml-2 font-black text-[9px] uppercase tracking-widest ${character.isPaused ? "text-emerald-400" : "text-slate-500"}`}
+              >
+                {character.isPaused ? "Resume Session" : "Pause Session"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
       {/* 📜 JOURNAL MODAL */}
-      <Modal visible={journalVisible} transparent animationType="slide">
-         <View className="flex-1 bg-slate-950/95 justify-end">
-            <View className="bg-slate-900 rounded-t-[50px] p-8 border-t border-slate-800 h-[70%]">
-               <View className="flex-row justify-between items-center mb-8">
-                  <Text className="text-white text-3xl font-black italic uppercase">Journal</Text>
-                  <TouchableOpacity onPress={() => setJournalVisible(false)} className="bg-slate-800 p-2 rounded-full">
-                     <Ionicons name="close" size={24} color="white" />
-                  </TouchableOpacity>
-               </View>
-
-               <FlatList
-                 data={battleLogs}
-                 keyExtractor={(i) => i.id}
-                 renderItem={({ item }) => (
-                   <View className="bg-slate-950 border border-slate-800 p-4 rounded-2xl mb-3 flex-row items-center">
-                     <View className={`w-10 h-10 rounded-xl justify-center items-center ${item.isWin ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
-                       <Ionicons name={item.isWin ? "shield-checkmark" : "skull"} size={20} color={item.isWin ? "#10b981" : "#f43f5e"} />
-                     </View>
-                     <View className="ml-4 flex-1">
-                       <Text className="text-white font-bold">{item.enemyName}</Text>
-                       <Text className="text-slate-500 text-xs">+{item.expGained} XP • {new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
-                     </View>
-                   </View>
-                 )}
-                 ListEmptyComponent={<Text className="text-slate-600 text-center py-20 italic">No records found...</Text>}
-               />
+      <BaseModal
+        visible={journalVisible}
+        onClose={() => setJournalVisible(false)}
+        title="Adventure Journal"
+      >
+        <FlatList
+          data={battleLogs}
+          keyExtractor={(item, idx) => idx.toString()}
+          scrollEnabled={false}
+          renderItem={({ item }) => (
+            <View className="mb-4 bg-slate-950/50 p-4 rounded-2xl border border-white/5">
+              <View className="flex-row justify-between mb-1">
+                <Text className="text-white font-bold text-[10px] uppercase font-sans">
+                  Combat Pulse
+                </Text>
+                <Text className="text-slate-500 text-[9px] font-sans">
+                  {new Date(item.createdAt).toLocaleTimeString()}
+                </Text>
+              </View>
+              <Text className="text-white text-xs leading-5 font-sans">
+                {item.logDetails[0]?.message || "Combat encounter resolved."}
+              </Text>
+              <Text
+                className={`font-bold text-[10px] uppercase mt-2 font-sans ${item.isWin ? "text-emerald-400" : "text-rose-400"}`}
+              >
+                {item.isWin ? "Victory" : "Defeat"}
+              </Text>
             </View>
-         </View>
-      </Modal>
-      {/* ⚔️ ENCOUNTER MODAL (decision only — battle plays on /encounter screen) */}
-      {character.pendingEncounter && (
-        <Modal transparent animationType="fade">
-          <View className="flex-1 bg-slate-950/90 justify-center items-center px-6">
-            <View className="bg-slate-900 border border-indigo-500/30 p-8 rounded-[40px] w-full shadow-2xl overflow-hidden">
-              {/* Countdown bar */}
-              <View className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-800">
-                <View className="h-full bg-amber-500" style={{ width: `${(countdown / 30) * 100}%` }} />
-              </View>
+          )}
+          ListEmptyComponent={
+            <Text className="text-slate-500 text-center italic py-10">
+              No recent entries...
+            </Text>
+          }
+        />
+        <StandardButton
+          label="Close"
+          variant="secondary"
+          className="mt-4"
+          onPress={() => setJournalVisible(false)}
+        />
+      </BaseModal>
 
-              <View className="items-center mb-6">
-                {enc?.type === 'PVP_INCOMING' ? (
-                  <Text className="text-rose-400 font-bold uppercase tracking-widest text-[10px] mb-2">⚔️ You&apos;ve been attacked!</Text>
-                ) : enc?.type === 'PVP_WAITING' ? (
-                  <Text className="text-amber-400 font-bold uppercase tracking-widest text-[10px] mb-2">⏳ Awaiting response... ({countdown}s)</Text>
-                ) : enc?.type === 'PVP' ? (
-                  <Text className="text-orange-400 font-bold uppercase tracking-widest text-[10px] mb-2">⚠️ AMBUSH! {countdown}s to decide</Text>
-                ) : (
-                  <Text className="text-indigo-400 font-bold uppercase tracking-widest text-[10px] mb-2">ENCOUNTER! Skip in {countdown}s</Text>
-                )}
-                <Text className="text-3xl font-black text-white italic uppercase text-center">{enc?.name}</Text>
-                {(enc?.type === 'PVP' || enc?.type === 'PVP_INCOMING') && (
-                  <Text className="text-slate-400 text-xs mt-1">Lv.{enc?.level} · {enc?.hp} HP</Text>
-                )}
-              </View>
+      {/* ⚔️ ENCOUNTER MODAL */}
+      <BaseModal
+        visible={!!enc}
+        onClose={() => resolveEncounter("skip")}
+        showClose={false}
+        title={getModalTitle()}
+      >
+        <View className="items-center mb-8">
+          <Text className="text-6xl mb-6">
+            {enc?.type === "GATHERING"
+              ? "💎"
+              : enc?.type === "DUNGEON"
+                ? "🚪"
+                : "👹"}
+          </Text>
+          <Text className="text-2xl font-bold text-white italic uppercase text-center mb-2 font-sans">
+            {enc?.name || UI_STRINGS.UNKNWON_DISCOVERY}
+          </Text>
+            <Text className="text-amber-400 font-bold text-xs uppercase animate-pulse font-sans">
+              {UI_STRINGS.DECISION_WAITING}
+            </Text>
+        </View>
 
-              <View className="space-y-3">
-                {enc?.type === "DUNGEON" && (
-                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("enter_dungeon")} className="bg-fuchsia-600 p-5 rounded-3xl flex-row justify-center items-center">
-                    <Ionicons name="skull-outline" size={20} color="white" />
-                    <Text className="text-white font-black uppercase tracking-widest ml-3">Delve Dungeon</Text>
-                  </TouchableOpacity>
-                )}
-                {enc?.type === "GATHERING" && (
-                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("gather")} className="bg-emerald-600 p-5 rounded-3xl flex-row justify-center items-center">
-                    <Ionicons name="leaf-outline" size={20} color="white" />
-                    <Text className="text-white font-black uppercase tracking-widest ml-3">Gather</Text>
-                  </TouchableOpacity>
-                )}
-                {enc?.type === "PVE" && (
-                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("attack")} className="bg-rose-600 p-5 rounded-3xl flex-row justify-center items-center">
-                    <Ionicons name="bonfire-outline" size={20} color="white" />
-                    <Text className="text-white font-black uppercase tracking-widest ml-3">Fight</Text>
-                  </TouchableOpacity>
-                )}
-                {enc?.type === "PVP" && (
-                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("attack")} className="bg-orange-600 p-5 rounded-3xl flex-row justify-center items-center">
-                    <Ionicons name="flash-outline" size={20} color="white" />
-                    <Text className="text-white font-black uppercase tracking-widest ml-3">⚔️ Attack</Text>
-                  </TouchableOpacity>
-                )}
-                {enc?.type === "PVP_INCOMING" && (
-                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("attack")} className="bg-rose-700 p-5 rounded-3xl flex-row justify-center items-center border border-rose-500/50">
-                    <Ionicons name="shield-outline" size={20} color="white" />
-                    <Text className="text-white font-black uppercase tracking-widest ml-3">⚔️ Fight Back</Text>
-                  </TouchableOpacity>
-                )}
-                {enc?.type === "PVP_WAITING" && (
-                  <View className="bg-slate-800/60 p-5 rounded-3xl flex-row justify-center items-center">
-                    <ActivityIndicator size="small" color="#f59e0b" />
-                    <Text className="text-amber-400 font-black uppercase tracking-widest ml-3">Waiting for response...</Text>
-                  </View>
-                )}
-                {enc?.type !== "PVP_WAITING" && (
-                  <TouchableOpacity disabled={isResolving} onPress={() => resolveEncounter("skip")} className="bg-slate-800 p-5 rounded-3xl justify-center items-center">
-                    <Text className="text-slate-400 font-black uppercase tracking-widest">
-                      {enc?.type === 'PVP' ? 'Say Hello (Flee)' :
-                       enc?.type === 'PVP_INCOMING' ? 'Flee (AGI-based)' : 'Bypass'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
+        <View className="flex-row items-center justify-center bg-slate-950 py-3 rounded-2xl border border-white/5 mb-8">
+          <Ionicons
+            name="time-outline"
+            size={14}
+            color="#94a3b8"
+            style={{ marginRight: 6 }}
+          />
+          <Text className="text-slate-400 font-bold text-xs font-sans">
+            {UI_STRINGS.DECISION_REQUIRED}: {countdown}S
+          </Text>
+        </View>
 
+        <View className="space-y-3">
+          {enc?.type === "GATHERING" ? (
+            <StandardButton
+              label="Gather Resource"
+              variant="success"
+              loading={isResolving}
+              onPress={() => resolveEncounter("gather")}
+            />
+          ) : enc?.type === "DUNGEON" ? (
+            <StandardButton
+              label="Enter Dungeon"
+              variant="primary"
+              loading={isResolving}
+              onPress={() => resolveEncounter("enter_dungeon")}
+            />
+          ) : (
+            <StandardButton
+              label={enc?.type === "PVP_WAITING" ? "Attack anyway" : "Fight"}
+              variant="danger"
+              loading={isResolving}
+              onPress={() => resolveEncounter("attack")}
+            />
+          )}
+          <StandardButton
+            label="Ignore & Continue"
+            variant="secondary"
+            disabled={isResolving}
+            onPress={() => resolveEncounter("skip")}
+          />
+        </View>
+      </BaseModal>
     </View>
   );
 }

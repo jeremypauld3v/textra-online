@@ -61,7 +61,7 @@ export async function authRoutes(server) {
                 characterId,
                 email: user.email
             });
-            return reply.send({ token, characterId, message: "Login successful" });
+            return reply.send({ token, characterId, userId: user.id, message: "Login successful" });
         }
         catch (err) {
             server.log.error(err);

@@ -4,7 +4,18 @@ module.exports = {
   content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        slate: {
+          950: "#000000",
+        },
+      },
+      fontFamily: {
+        sans: "Silkscreen-Regular",
+        pixel: "Silkscreen-Regular",
+        "pixel-bold": "Silkscreen-Bold",
+      },
+    },
   },
   plugins: [],
 }

@@ -14,7 +14,14 @@ export class InventoryService {
     characterId: string,
     itemCode: string,
     quantity: number = 1,
-    rolls: { rolledAtk?: number | null; rolledDef?: number | null; rolledStr?: number | null; rolledAgi?: number | null } = {},
+    rolls: {
+      rolledAtk?: number | null;
+      rolledDef?: number | null;
+      rolledStr?: number | null;
+      rolledAgi?: number | null;
+      rolledInt?: number | null;
+      rolledLuk?: number | null;
+    } = {},
     customTx?: any // Optional transaction client
   ) {
     const db = customTx || prisma;
@@ -59,6 +66,8 @@ export class InventoryService {
         rolledDef: rolls.rolledDef || null,
         rolledStr: rolls.rolledStr || null,
         rolledAgi: rolls.rolledAgi || null,
+        rolledInt: rolls.rolledInt || null,
+        rolledLuk: rolls.rolledLuk || null,
       }
     });
   }

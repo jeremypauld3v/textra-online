@@ -5,6 +5,7 @@ import { gameDataManager } from "./gameDataManager.js";
 import { generatePVEEncounter, generateGatheringEncounter } from "./combatEngine.js";
 import { dungeonService } from "./dungeonService.js";
 import { Prisma } from "@prisma/client";
+import { GAME_BALANCE } from "../constants/gameBalance.js";
 
 const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
   maxRetriesPerRequest: null,
@@ -16,7 +17,7 @@ import { getIO } from "../socket.js";
  * ⚔️ REAL-TIME PVP MATCHMAKING
  */
 async function rollPvPEncounter(characterId: string, depth: number) {
-  if (depth < 200) return null; // Attacker must be in danger zone
+  if (depth < GAME_BALANCE.SAFE_ZONE_LIMIT) return null; // Attacker must be in danger zone
 
   // Search Redis for nearby players (+/- 50km)
   const nearbyIds = await connection.zrangebyscore("players_depth", depth - 50, depth + 50);
@@ -37,7 +38,7 @@ async function rollPvPEncounter(characterId: string, depth: number) {
     targetChar.hp <= 0 ||
     targetChar.actionStatus === "ENCOUNTER" ||
     targetChar.pendingEncounter !== null ||
-    targetChar.currentDepth < 200  // ← safe zone protection
+    targetChar.currentDepth < GAME_BALANCE.SAFE_ZONE_LIMIT  // ← safe zone protection
   ) return null;
 
   return {
@@ -54,7 +55,7 @@ async function rollPvPEncounter(characterId: string, depth: number) {
 export const travelQueueName = "TravelQueue";
 export const travelQueue = new Queue(travelQueueName, { connection });
 
-export const ENCOUNTER_INTERVAL = 10; // Exported for use in game routes
+export const ENCOUNTER_INTERVAL = GAME_BALANCE.ENCOUNTER_INTERVAL; // Exported for use in game routes
 
 /**
  * 🎲 DISTANCE-SCALED ENCOUNTER ROLLS
@@ -67,7 +68,7 @@ async function rollPulseEncounter(character: any) {
   // Valoria (0): 30%
   // 400km: 50%
   // Cap at 50%
-  const spawnChance = Math.min(0.5, 0.3 + (depth / 2000));
+  const spawnChance = Math.min(GAME_BALANCE.MAX_SPAWN_CHANCE, GAME_BALANCE.BASE_SPAWN_CHANCE + (depth / 2000));
 
   const roll = Math.random();
   if (roll > spawnChance) return null;
@@ -76,20 +77,20 @@ async function rollPulseEncounter(character: any) {
   const typeRoll = Math.random();
   
   // Safe Zone: Mostly Gathering, Very Rarely weak PVE
-  if (depth < 200) {
-    if (typeRoll < 0.8) return await generateGatheringEncounter(character);
+  if (depth < GAME_BALANCE.SAFE_ZONE_LIMIT) {
+    if (typeRoll < GAME_BALANCE.GATHERING_CHANCE_SAFE) return await generateGatheringEncounter(character);
     return await generatePVEEncounter(character);
   }
 
   // Danger Zone (>= 200km): PvP, Monsters, Dungeons
   // (PVP check happens in game routes or real-time loop, here we roll AI encounters)
-  if (typeRoll < 0.15) {
+  if (typeRoll < GAME_BALANCE.DUNGEON_ENCOUNTER_CHANCE) {
     const dungeon = await dungeonService.generateDungeonEncounter(character as any);
     if (dungeon) return dungeon;
   }
   
-  if (typeRoll < 0.7) return await generatePVEEncounter(character);
-  return await generateGatheringEncounter(character);
+  if (typeRoll < GAME_BALANCE.GATHERING_CHANCE_DANGER + GAME_BALANCE.DUNGEON_ENCOUNTER_CHANCE) return await generateGatheringEncounter(character);
+  return await generatePVEEncounter(character);
 }
 
 export const travelWorker = new Worker(
@@ -98,6 +99,11 @@ export const travelWorker = new Worker(
     const { characterId } = job.data;
     const character = await prisma.character.findUnique({ where: { id: characterId } });
     if (!character) return;
+
+    if (character.isPaused) {
+      console.log(`⏸️ ${character.name} is paused. Skipping pulse.`);
+      return { success: true, paused: true };
+    }
 
     console.log(`Pulse for ${character.name} [${character.actionStatus}] at ${character.currentDepth}km`);
 
@@ -112,10 +118,9 @@ export const travelWorker = new Worker(
     }
 
     // 1. Check for PVP Encounter (If in Danger Zone — 5% chance per pulse to keep it rare)
-    const PVP_CHANCE = 0.05;
     if (
-      character.currentDepth >= 200 &&
-      Math.random() < PVP_CHANCE &&
+      character.currentDepth >= GAME_BALANCE.SAFE_ZONE_LIMIT &&
+      Math.random() < GAME_BALANCE.PVP_AMBUSH_CHANCE &&
       (character.actionStatus === "TRAVELING_OUT" || character.actionStatus === "TRAVELING_IN")
     ) {
        const pvpEncounter = await rollPvPEncounter(characterId, character.currentDepth);
@@ -166,9 +171,9 @@ export const travelWorker = new Worker(
     let nextStatus = character.actionStatus;
 
     if (character.actionStatus === "TRAVELING_OUT") {
-      nextDepth += 5;
+      nextDepth += GAME_BALANCE.TRAVEL_OUT_DISTANCE;
     } else if (character.actionStatus === "TRAVELING_IN") {
-      nextDepth = Math.max(0, character.currentDepth - 10); // Returning is 2x faster
+      nextDepth = Math.max(0, character.currentDepth - GAME_BALANCE.TRAVEL_IN_DISTANCE); // Returning is 2x faster
       if (nextDepth === 0) {
         nextStatus = "IDLE";
         console.log(`${character.name} returned to Valoria City.`);

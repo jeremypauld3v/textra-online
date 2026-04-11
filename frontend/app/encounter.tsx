@@ -1,13 +1,16 @@
-import {
-  View, Text, ActivityIndicator, StyleSheet
-} from "react-native";
+import { View, Text, ActivityIndicator } from "react-native";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useEncounterStore } from "../store/useEncounterStore";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const BATTLE_START_DELAY = 3000;
+// UI Components
+import ProgressBar from "../components/ui/ProgressBar";
+
+// Constants
+import { GAME_CONFIG } from "../constants/GameConfig";
+import { UI_STRINGS } from "../constants/Strings";
 
 export default function EncounterScreen() {
   const router = useRouter();
@@ -32,11 +35,14 @@ export default function EncounterScreen() {
     }
   }, [simBattle, safeBack]);
 
-  // 3s delay before animation starts (gives both players time to see the screen)
+  // Delay before animation starts
   useEffect(() => {
-    if (!simBattle) { setSimStarted(false); return; }
+    if (!simBattle) {
+      setSimStarted(false);
+      return;
+    }
     setSimStarted(false);
-    const delay = setTimeout(() => setSimStarted(true), BATTLE_START_DELAY);
+    const delay = setTimeout(() => setSimStarted(true), GAME_CONFIG.BATTLE_START_DELAY);
     return () => clearTimeout(delay);
   }, [simBattle, simBattle?.log]);
 
@@ -44,26 +50,23 @@ export default function EncounterScreen() {
   useEffect(() => {
     if (!simBattle || !simStarted) return;
     if (simTurn < simBattle.log.logDetails.length - 1) {
-      const t = setTimeout(() => setSimTurn(v => v + 1), 1200);
+      const t = setTimeout(() => setSimTurn((v) => v + 1), GAME_CONFIG.BATTLE_TURN_DELAY);
       return () => clearTimeout(t);
     }
     if (simTurn === simBattle.log.logDetails.length - 1) {
       const t = setTimeout(() => {
         if (simBattle.isPvp) {
           Toast.show({
-            type: simBattle.isWin ? 'success' : 'error',
-            text1: simBattle.isWin ? '⚔️ Victory!' : '💀 Defeated!',
-            text2: simBattle.isWin
-              ? `Looted ${simBattle.goldStolen || 0} gold!`
-              : 'Lost 10% gold and some items.',
-            visibilityTime: 3500,
+            type: simBattle.isWin ? "success" : "error",
+            text1: simBattle.isWin ? UI_STRINGS.BATTLE_VICTORY : UI_STRINGS.BATTLE_DEFEAT,
+            text2: simBattle.isWin ? `Looted ${simBattle.goldStolen || 0} gold!` : "Lost 10% gold and some items.",
+            visibilityTime: GAME_CONFIG.BATTLE_TOAST_DURATION,
           });
         }
         setSimBattle(null);
         setSimTurn(0);
         setSimStarted(false);
-        safeBack();
-      }, 2500);
+      }, GAME_CONFIG.BATTLE_END_DELAY);
       return () => clearTimeout(t);
     }
   }, [simBattle, simTurn, simStarted, router, setSimBattle, safeBack]);
@@ -90,62 +93,77 @@ export default function EncounterScreen() {
   if (!simBattle) return null;
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView className="flex-1 bg-black px-6 justify-center items-center">
       {!simStarted ? (
-        /* ── Pre-battle: 3s countdown ── */
-        <View style={styles.intro}>
-          <Text style={styles.battleLabel}>
+        /* ── Pre-battle countdown ── */
+        <View className="items-center">
+          <Text className="text-white text-xl font-bold italic uppercase mb-1 tracking-widest font-sans">
             {simBattle.isPvp ? "⚔️ PVP BATTLE" : simBattle.isGathering ? "⚒️ GATHERING" : "⚔️ COMBAT"}
           </Text>
-          <Text style={styles.vsLine}>
+          <Text className="text-slate-500 font-bold text-center uppercase tracking-widest text-[8px] font-sans">
             {simBattle.playerName ?? "You"}
             {" vs "}
             {simBattle.enemyName ?? simBattle.log?.enemyName ?? "Enemy"}
           </Text>
-          <ActivityIndicator size="large" color="#ef4444" style={{ marginTop: 32 }} />
-          <Text style={styles.startingText}>Battle starting in {Math.ceil(BATTLE_START_DELAY / 1000)}s...</Text>
+          <ActivityIndicator size="small" color="#f43f5e" className="mt-8" />
+          <Text className="text-slate-600 font-bold text-[8px] mt-4 uppercase tracking-[4px] font-sans">Initializing...</Text>
         </View>
       ) : (
         /* ── Active battle ── */
-        <View style={styles.battleContainer}>
+        <View className="flex-1 w-full justify-center items-center">
           {/* HP Bars */}
-          <View style={styles.hpRow}>
-            <View style={styles.hpBlock}>
-              <Text style={styles.playerName}>
-                {simBattle.isGathering ? "⚒️ Worker" : (simBattle.playerName ?? "You")}
+          <View className="flex-row justify-between items-center w-full mb-12 px-2">
+            <View className="flex-1 items-center">
+              <Text className="text-white font-bold text-sm mb-3 uppercase tracking-tighter font-sans" numberOfLines={1}>
+                {simBattle.isGathering ? "Worker" : (simBattle.playerName ?? "You")}
               </Text>
-              <View style={styles.hpBarBg}>
-                <View style={[styles.hpBarFill, { width: `${combatSim?.playerHpPct ?? 100}%`, backgroundColor: '#10b981' }]} />
-              </View>
-              <Text style={styles.hpText}>
+              <ProgressBar 
+                current={combatSim?.playerHp ?? 0} 
+                max={simBattle.startMaxPlayerHp} 
+                color="indigo" 
+                showValues={false} 
+                size="sm" 
+              />
+              <Text className="text-slate-600 font-bold text-[9px] mt-2 uppercase font-sans">
                 {simBattle.isGathering ? "Efficiency" : `${Math.floor(combatSim?.playerHp ?? 0)} HP`}
               </Text>
             </View>
 
-            <Text style={styles.vsText}>{simBattle.isGathering ? "AT" : "VS"}</Text>
+            <View className="mx-6 items-center">
+               <Text className="text-white font-bold text-xl italic opacity-20 font-sans">{simBattle.isGathering ? "AT" : "VS"}</Text>
+            </View>
 
-            <View style={styles.hpBlock}>
-              <Text style={styles.enemyName}>
+            <View className="flex-1 items-center">
+              <Text className="text-rose-400 font-bold text-sm mb-3 uppercase tracking-tighter font-sans" numberOfLines={1}>
                 {simBattle.isGathering ? "Resource" : (simBattle.enemyName ?? simBattle.log?.enemyName)}
               </Text>
-              <View style={styles.hpBarBg}>
-                <View style={[styles.hpBarFill, { width: `${combatSim?.enemyHpPct ?? 100}%`, backgroundColor: '#ef4444' }]} />
-              </View>
-              <Text style={styles.hpText}>
+              <ProgressBar 
+                current={combatSim?.enemyHp ?? 0} 
+                max={simBattle.startMaxEnemyHp} 
+                color="rose" 
+                showValues={false} 
+                size="sm" 
+              />
+              <Text className="text-slate-600 font-bold text-[9px] mt-2 uppercase font-sans">
                 {simBattle.isGathering ? "Integrity" : `${Math.floor(combatSim?.enemyHp ?? 0)} HP`}
               </Text>
             </View>
           </View>
 
           {/* Log message */}
-          <View style={styles.logCard}>
-            <Text style={styles.logText}>{simBattle.log.logDetails[simTurn]?.message}</Text>
+          <View className="w-full bg-slate-900 border border-slate-800 p-6 rounded-[32px] shadow-2xl">
+            <Text className="text-white text-base font-bold text-center leading-tight italic uppercase tracking-tighter font-sans">
+              {simBattle.log.logDetails[simTurn]?.message}
+            </Text>
           </View>
 
           {/* Turn dots */}
-          <View style={styles.dotRow}>
+          <View className="flex-row mt-12 space-x-1.5 flex-wrap justify-center">
             {simBattle.log.logDetails.map((_: any, idx: number) => (
-              <View key={idx} style={[styles.dot, idx === simTurn ? styles.dotActive : styles.dotInactive]} />
+              <View 
+                key={idx} 
+                className={`h-1.5 rounded-full ${idx === simTurn ? "w-8 bg-white" : "w-1.5 bg-slate-800"}`} 
+              />
             ))}
           </View>
         </View>
@@ -153,26 +171,3 @@ export default function EncounterScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#020617', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  intro: { alignItems: 'center' },
-  battleLabel: { color: 'white', fontSize: 28, fontWeight: '900', fontStyle: 'italic', marginBottom: 12 },
-  vsLine: { color: '#94a3b8', fontSize: 16, textAlign: 'center' },
-  startingText: { color: '#475569', fontSize: 13, marginTop: 12 },
-  battleContainer: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
-  hpRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 40, paddingHorizontal: 16 },
-  hpBlock: { flex: 1, alignItems: 'center' },
-  playerName: { color: '#818cf8', fontWeight: '900', fontSize: 18, marginBottom: 8 },
-  enemyName: { color: '#f87171', fontWeight: '900', fontSize: 18, marginBottom: 8 },
-  hpBarBg: { width: '100%', height: 10, backgroundColor: '#0f172a', borderRadius: 999, overflow: 'hidden' },
-  hpBarFill: { height: '100%', borderRadius: 999 },
-  hpText: { color: '#475569', fontSize: 11, marginTop: 4, fontWeight: '700' },
-  vsText: { color: 'white', fontWeight: '900', fontSize: 22, fontStyle: 'italic', marginHorizontal: 20 },
-  logCard: { width: '100%', backgroundColor: '#0f172a', padding: 32, borderRadius: 32, borderWidth: 1, borderColor: '#1e293b' },
-  logText: { color: 'white', fontSize: 19, fontWeight: '700', textAlign: 'center', lineHeight: 28 },
-  dotRow: { flexDirection: 'row', marginTop: 32, gap: 4, flexWrap: 'wrap', justifyContent: 'center' },
-  dot: { height: 6, borderRadius: 999 },
-  dotActive: { width: 28, backgroundColor: '#6366f1' },
-  dotInactive: { width: 8, backgroundColor: '#1e293b' },
-});

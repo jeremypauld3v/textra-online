@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, FlatList, TextInput, Alert, ActivityIndicator, StyleSheet, Modal, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, FlatList, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../context/SocketContext";
@@ -7,7 +7,14 @@ import { gameApi, InventoryItem, CharacterStatus } from "../api/game";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { SafeAreaView } from "react-native-safe-area-context";
-import QuantityTradeModal from "../components/QuantityTradeModal";
+import QuantityTradeModal from "@/components/QuantityTradeModal";
+
+// UI Components
+import StandardButton from "@/components/ui/StandardButton";
+import BaseModal from "@/components/ui/BaseModal";
+import StatBadge from "../components/ui/StatBadge";
+import ItemIcon from "../components/ui/ItemIcon";
+import ScreenHeader from "../components/ui/ScreenHeader";
 
 interface OfferItem {
   id: string;
@@ -98,7 +105,6 @@ export default function TradeScreen() {
         setTheirGold(data.gold);
         setTheirLocked(data.locked);
         setTheirFinalized(data.finalized || false);
-        // If they unlocked/changed, backend resets our finalized status too
         if (!data.finalized) setMyFinalized(false);
       }
     });
@@ -127,7 +133,6 @@ export default function TradeScreen() {
     };
   }, [socket, targetUserId, setTradeWith, safeBack]);
 
-  // Sync my offer to partner whenever it changes
   useEffect(() => {
     if (socket && targetUserId && !myLocked) {
       socket.emit("trade_update", {
@@ -180,7 +185,6 @@ export default function TradeScreen() {
     if (!myLocked) setMyItems(prev => prev.filter(i => i.id !== id));
   };
 
-  // Guard: if no active trade partner, navigate back safely (can't call router.back() during render)
   useEffect(() => {
     if (!targetUserId) {
       safeBack();
@@ -190,102 +194,114 @@ export default function TradeScreen() {
   if (!targetUserId) return null;
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView className="flex-1 bg-black px-6 pt-10">
       {/* ── Header ── */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Exchange</Text>
-          <Text style={styles.subtitle}>Active Session · {targetUserId.substring(0, 8)}</Text>
-        </View>
-        <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-          <Ionicons name="close" size={24} color="white" />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Exchange"
+        subtitle={`Session · ${targetUserId.substring(0, 8)}`}
+        rightElement={
+          <TouchableOpacity onPress={handleClose} className="bg-slate-900 p-2.5 rounded-2xl border border-slate-800">
+            <Ionicons name="close" size={24} color="white" />
+          </TouchableOpacity>
+        }
+      />
 
       {/* ── Trade Booth ── */}
-      <View style={styles.booth}>
+      <View className="flex-row space-x-2 mb-4">
         {/* My Side */}
-        <View style={[styles.side, myLocked && styles.sideLocked, myFinalized && styles.sideFinalized]}>
-          <View style={styles.sideHeader}>
-            <Text style={styles.sideTitle}>Your Offer</Text>
+        <View className={`flex-1 p-4 rounded-[32px] bg-slate-900 border ${
+          myFinalized ? "border-emerald-500 bg-emerald-500/5" : myLocked ? "border-white bg-white/5" : "border-slate-800"
+        }`}>
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-white font-bold text-[10px] uppercase tracking-widest font-sans">Your Offer</Text>
             {myFinalized ? (
                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
             ) : myLocked ? (
-               <Ionicons name="lock-closed" size={12} color="#6366f1" />
+               <Ionicons name="lock-closed" size={12} color="#FFFFFF" />
             ) : null}
           </View>
-          <View style={styles.itemBox}>
+          
+          <View className="h-32 bg-slate-950/50 rounded-2xl p-2 mb-3 border border-slate-800/50">
             <FlatList
               data={myItems}
               keyExtractor={i => i.id}
-              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
               renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => removeItem(item.id)} style={styles.itemRow}>
-                  <Text style={styles.itemEmoji}>{itemTemplates[item.itemCode]?.emoji || '📦'}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemName} numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                    <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
+                <TouchableOpacity onPress={() => removeItem(item.id)} className="flex-row items-center mb-2 bg-slate-900/80 p-2 rounded-xl border border-slate-800/50">
+                  <Text className="text-lg mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
+                  <View className="flex-1">
+                    <Text className="text-white font-bold text-[9px] uppercase font-sans" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                    <Text className="text-white font-bold text-[8px] italic font-sans">x{item.quantity}</Text>
                   </View>
                 </TouchableOpacity>
               )}
             />
           </View>
-          <TextInput
-            placeholder="Gold"
-            placeholderTextColor="#475569"
-            keyboardType="numeric"
-            style={styles.goldInput}
-            value={myGold > 0 ? myGold.toString() : ""}
-            editable={!myLocked}
-            onChangeText={v => setMyGold(parseInt(v) || 0)}
-          />
+          
+          <View className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 flex-row items-center">
+             <TextInput
+               placeholder="Gold"
+               placeholderTextColor="#334155"
+               keyboardType="numeric"
+               className="flex-1 text-white font-bold text-xs text-center font-sans"
+               value={myGold > 0 ? myGold.toString() : ""}
+               editable={!myLocked}
+               onChangeText={v => setMyGold(parseInt(v) || 0)}
+             />
+             <Ionicons name="cash" size={12} color="#fbbf24" className="ml-2" />
+          </View>
         </View>
 
         {/* Their Side */}
-        <View style={[styles.side, theirLocked && styles.sideLockedThem, theirFinalized && styles.sideFinalizedThem]}>
-          <View style={styles.sideHeader}>
-            <Text style={[styles.sideTitle, { color: '#10b981' }]}>Partner Offer</Text>
+        <View className={`flex-1 p-4 rounded-[32px] bg-slate-900 border ${
+          theirFinalized ? "border-emerald-500 bg-emerald-500/5" : theirLocked ? "border-emerald-500/40 bg-emerald-500/5" : "border-slate-800"
+        }`}>
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-emerald-400 font-bold text-[10px] uppercase tracking-widest font-sans">Partner Offer</Text>
             {theirFinalized ? (
                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
             ) : theirLocked ? (
                <Ionicons name="shield-checkmark" size={12} color="#10b981" />
             ) : null}
           </View>
-          <View style={styles.itemBox}>
+          
+          <View className="h-32 bg-slate-950/50 rounded-2xl p-2 mb-3 border border-slate-800/50">
             <FlatList
               data={theirItems}
               keyExtractor={i => i.id}
-              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
               renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => {
-                   // Let users see details of partner items TOO
-                   setDetailsItem(item as any);
-                }} style={styles.itemRow}>
-                  <Text style={styles.itemEmoji}>{itemTemplates[item.itemCode]?.emoji || '📦'}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemName} numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                    <Text style={[styles.itemQty, { color: '#10b981' }]}>Qty: {item.quantity}</Text>
+                <TouchableOpacity 
+                   onPress={() => setDetailsItem(item as any)} 
+                   className="flex-row items-center mb-2 bg-slate-900/80 p-2 rounded-xl border border-slate-800/50"
+                >
+                  <Text className="text-lg mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
+                  <View className="flex-1">
+                    <Text className="text-white font-bold text-[9px] uppercase font-sans" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                    <Text className="text-emerald-400 font-bold text-[8px] italic font-sans">x{item.quantity}</Text>
                   </View>
                 </TouchableOpacity>
               )}
             />
           </View>
-          <View style={styles.goldDisplay}>
-            <Text style={styles.goldDisplayText}>{theirGold} G</Text>
+          
+          <View className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 items-center justify-center">
+             <Text className="text-amber-400 font-bold text-xs italic font-sans">{theirGold} Gold</Text>
           </View>
         </View>
       </View>
 
       {/* ── Inventory ── */}
-      <View style={styles.inventorySection}>
-        <View style={styles.invHeader}>
-          <Text style={styles.invTitle}>Your Inventory (Unequipped)</Text>
-          <View style={styles.invBadge}>
-            <Text style={styles.invBadgeText}>{tradableInventory.length} Slots</Text>
+      <View className="flex-1 bg-slate-900/50 rounded-[40px] p-6 mb-4 border border-slate-800/50">
+        <View className="flex-row justify-between items-center mb-6 px-1">
+          <Text className="text-slate-500 font-bold text-[10px] uppercase tracking-[2px] font-sans">Inventory</Text>
+          <View className="bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
+            <Text className="text-slate-600 font-bold text-[9px] font-sans">{tradableInventory.length} Items</Text>
           </View>
         </View>
+        
         {loading ? (
-          <ActivityIndicator color="#6366f1" style={{ marginTop: 20 }} />
+          <ActivityIndicator color="#FFFFFF" className="mt-10" />
         ) : (
           <FlatList
             data={tradableInventory}
@@ -294,33 +310,36 @@ export default function TradeScreen() {
             columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 12 }}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
-              <TouchableOpacity onPress={() => setDetailsItem(item)} style={styles.invSlot} activeOpacity={0.7}>
-                <Text style={{ fontSize: 24 }}>{itemTemplates[item.itemCode]?.emoji || '📦'}</Text>
-                {item.quantity > 1 && (
-                  <View style={styles.qtyBadge}>
-                    <Text style={styles.qtyBadgeText}>{item.quantity}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+              <ItemIcon
+                emoji={itemTemplates[item.itemCode]?.emoji || "📦"}
+                quantity={item.quantity}
+                onPress={() => setDetailsItem(item)}
+                className="w-[22.5%]"
+              />
             )}
           />
         )}
       </View>
 
       {/* ── Action Bar ── */}
-      <View style={styles.actionBar}>
-        <TouchableOpacity onPress={toggleLock} disabled={myFinalized} style={[styles.actionBtn, myLocked ? styles.actionBtnLocked : styles.actionBtnDefault, myFinalized && { opacity: 0.5 }]}>
-          <Text style={styles.actionBtnText}>{myLocked ? "Revise Offer" : "Lock Proposal"}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+      <View className="flex-row mb-6 space-x-3">
+        <StandardButton
+          label={myLocked ? "Revise Offer" : "Lock Proposal"}
+          onPress={toggleLock}
+          disabled={myFinalized}
+          variant={myLocked ? "warning" : "secondary"}
+          className="flex-1"
+          size="sm"
+        />
+        <StandardButton
+          label={myFinalized ? "Awaiting Partner..." : "Finalize Trade"}
           onPress={commitTrade}
+          loading={myFinalized && theirFinalized}
           disabled={!myLocked || !theirLocked || myFinalized}
-          style={[styles.actionBtn, myLocked && theirLocked ? (myFinalized ? styles.actionBtnFinalized : styles.actionBtnFinalize) : styles.actionBtnDisabled]}
-        >
-          <Text style={styles.actionBtnText}>
-             {myFinalized ? "Awaiting Partner..." : "Finalize"}
-          </Text>
-        </TouchableOpacity>
+          variant={myLocked && theirLocked ? "success" : "ghost"}
+          className="flex-1"
+          size="sm"
+        />
       </View>
 
       {/* 📦 QUANTITY MODAL */}
@@ -332,112 +351,58 @@ export default function TradeScreen() {
       />
 
       {/* 🔍 DETAILS MODAL */}
-      <Modal visible={!!detailsItem} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-           <View style={styles.detailsBox}>
-              <View style={styles.detailsHeader}>
-                 <Text style={{ fontSize: 40 }}>{detailsItem && itemTemplates[detailsItem.itemCode]?.emoji}</Text>
-                 <View style={{ marginLeft: 16, flex: 1 }}>
-                    <Text style={styles.detailsName}>{detailsItem && itemTemplates[detailsItem.itemCode]?.name}</Text>
-                    <Text style={styles.detailsType}>{detailsItem && itemTemplates[detailsItem.itemCode]?.type || "Common Item"}</Text>
-                 </View>
-                 <TouchableOpacity onPress={() => setDetailsItem(null)} style={styles.detailsClose}>
-                    <Ionicons name="close" size={20} color="white" />
-                 </TouchableOpacity>
-              </View>
+      <BaseModal
+        visible={!!detailsItem}
+        onClose={() => setDetailsItem(null)}
+      >
+        {detailsItem && (
+          (() => {
+            const meta = itemTemplates[detailsItem.itemCode];
+            const isMine = inventory.some(i => i.id === detailsItem.id);
+            const inTrade = myItems.some(i => i.id === detailsItem.id);
+            return (
+              <>
+                <View className="items-center mb-6">
+                  <ItemIcon emoji={meta?.emoji || "📦"} size="lg" rarity={meta?.rarityId} className="mb-4" />
+                  <Text className="text-white font-bold text-2xl italic uppercase text-center font-sans">{meta?.name}</Text>
+                  <Text className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-1 font-sans">{meta?.type || "Standard"}</Text>
+                </View>
 
-              <ScrollView style={{ maxHeight: 200, marginTop: 16 }}>
-                 <View style={styles.statsGrid}>
-                    <StatItem label="ATK" value={detailsItem?.rolledAtk} color="#ef4444" />
-                    <StatItem label="DEF" value={detailsItem?.rolledDef} color="#3b82f6" />
-                    <StatItem label="STR" value={detailsItem?.rolledStr} color="#f59e0b" />
-                    <StatItem label="AGI" value={detailsItem?.rolledAgi} color="#10b981" />
-                 </View>
-                 <Text style={styles.detailsDescription}>
-                    {detailsItem && itemTemplates[detailsItem.itemCode]?.description || "A solid item found in the wild. Perfect for trading or personal use."}
-                 </Text>
-              </ScrollView>
+                {(detailsItem.rolledAtk || detailsItem.rolledDef || detailsItem.rolledStr || detailsItem.rolledAgi) ? (
+                   <View className="flex-row justify-center space-x-2 mb-8">
+                     <StatBadge type="atk" value={detailsItem.rolledAtk ?? 0} />
+                     <StatBadge type="def" value={detailsItem.rolledDef ?? 0} />
+                     <StatBadge type="str" value={detailsItem.rolledStr ?? 0} />
+                     <StatBadge type="agi" value={detailsItem.rolledAgi ?? 0} />
+                   </View>
+                ) : null}
 
-              {/* Only show "Add to Trade" if it's our item and not already in trade */}
-              {detailsItem && inventory.find(i => i.id === detailsItem.id) && !myItems.find(i => i.id === detailsItem.id) && (
-                 <TouchableOpacity 
-                   onPress={() => {
-                     attemptAddItem(detailsItem);
-                     setDetailsItem(null);
-                   }} 
-                   style={styles.addBtn}
-                 >
-                    <Text style={styles.addBtnText}>Add to Offer</Text>
-                 </TouchableOpacity>
-              )}
-           </View>
-        </View>
-      </Modal>
+                <Text className="text-slate-400 text-center italic mb-10 leading-relaxed px-4 font-sans">
+                  &quot;{meta?.description || "A solid item found in the wild. Perfect for trading or personal use."}&quot;
+                </Text>
 
+                {isMine && !inTrade && (
+                  <StandardButton
+                    label="Add to Offer"
+                    variant="primary"
+                    onPress={() => {
+                      attemptAddItem(detailsItem);
+                      setDetailsItem(null);
+                    }}
+                  />
+                )}
+                
+                <StandardButton
+                  label="Close"
+                  variant="secondary"
+                  className="mt-3"
+                  onPress={() => setDetailsItem(null)}
+                />
+              </>
+            );
+          })()
+        )}
+      </BaseModal>
     </SafeAreaView>
   );
 }
-
-function StatItem({ label, value, color }: { label: string, value?: number | null, color: string }) {
-   if (value === undefined || value === null) return null;
-   return (
-      <View style={[styles.statItem, { borderColor: color + '40' }]}>
-         <Text style={[styles.statValue, { color }]}>{value > 0 ? `+${value}` : value}</Text>
-         <Text style={styles.statLabel}>{label}</Text>
-      </View>
-   );
-}
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#020617', paddingHorizontal: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 },
-  title: { color: 'white', fontSize: 28, fontWeight: '900', fontStyle: 'italic', textTransform: 'uppercase' },
-  subtitle: { color: '#475569', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2 },
-  closeBtn: { backgroundColor: '#1e293b', padding: 10, borderRadius: 16, borderWidth: 1, borderColor: '#334155' },
-  booth: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  side: { flex: 1, padding: 12, borderRadius: 24, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#1e293b' },
-  sideLocked: { backgroundColor: 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.4)' },
-  sideLockedThem: { backgroundColor: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.4)' },
-  sideFinalized: { backgroundColor: 'rgba(16,185,129,0.1)', borderColor: '#10b981' },
-  sideFinalizedThem: { backgroundColor: 'rgba(16,185,129,0.1)', borderColor: '#10b981' },
-  sideHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  sideTitle: { color: '#818cf8', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
-  itemBox: { height: 120, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 16, padding: 6, marginBottom: 8, borderWidth: 1, borderColor: '#1e293b' },
-  itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, backgroundColor: 'rgba(51,65,85,0.5)', padding: 6, borderRadius: 10 },
-  itemEmoji: { fontSize: 18, marginRight: 6 },
-  itemName: { color: 'white', fontSize: 9, fontWeight: '700' },
-  itemQty: { color: '#818cf8', fontSize: 8, fontWeight: '900', fontStyle: 'italic' },
-  goldInput: { color: 'white', fontWeight: '900', backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#1e293b', fontSize: 11, textAlign: 'center' },
-  goldDisplay: { backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, justifyContent: 'center', borderWidth: 1, borderColor: '#1e293b' },
-  goldDisplayText: { color: '#fbbf24', fontWeight: '900', fontStyle: 'italic', fontSize: 11, textAlign: 'center' },
-  inventorySection: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', borderRadius: 32, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#1e293b' },
-  invHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  invTitle: { color: '#475569', fontWeight: '900', fontSize: 11, textTransform: 'uppercase', letterSpacing: 2 },
-  invBadge: { backgroundColor: '#1e293b', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: '#334155' },
-  invBadgeText: { color: '#64748b', fontSize: 10, fontWeight: '700' },
-  invSlot: { width: '23%', aspectRatio: 1, backgroundColor: '#1e293b', borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#334155' },
-  qtyBadge: { position: 'absolute', bottom: 3, right: 3, backgroundColor: '#6366f1', paddingHorizontal: 4, borderRadius: 6 },
-  qtyBadgeText: { color: 'white', fontSize: 8, fontWeight: '900' },
-  actionBar: { flexDirection: 'row', gap: 10, paddingBottom: 10 },
-  actionBtn: { flex: 1, padding: 18, borderRadius: 24, alignItems: 'center' },
-  actionBtnDefault: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155' },
-  actionBtnLocked: { backgroundColor: '#d97706', borderWidth: 1, borderColor: '#f59e0b' },
-  actionBtnFinalize: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155' },
-  actionBtnFinalized: { backgroundColor: '#059669' },
-  actionBtnDisabled: { backgroundColor: '#1e293b', opacity: 0.4 },
-  actionBtnText: { color: 'white', fontWeight: '900', fontSize: 11, textTransform: 'uppercase', letterSpacing: 2 },
-  
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  detailsBox: { backgroundColor: '#0f172a', width: '100%', borderRadius: 40, padding: 24, borderWidth: 1, borderColor: '#1e293b' },
-  detailsHeader: { flexDirection: 'row', alignItems: 'center' },
-  detailsName: { color: 'white', fontSize: 24, fontWeight: '900' },
-  detailsType: { color: '#475569', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  detailsClose: { backgroundColor: '#1e293b', padding: 8, borderRadius: 14 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  statItem: { flex: 1, minWidth: '45%', backgroundColor: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
-  statValue: { fontSize: 18, fontWeight: '900' },
-  statLabel: { color: '#64748b', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
-  detailsDescription: { color: '#94a3b8', fontSize: 13, lineHeight: 20, fontStyle: 'italic' },
-  addBtn: { backgroundColor: '#6366f1', padding: 18, borderRadius: 20, alignItems: 'center', marginTop: 24 },
-  addBtnText: { color: 'white', fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
-});

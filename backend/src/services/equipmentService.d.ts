@@ -15,33 +15,39 @@ export declare class EquipmentService {
         updatedAt: Date;
         level: number;
         exp: number;
-        maxHp: number;
-        currentDepth: number;
-        actionStatus: string;
-        lastPulseAt: Date | null;
-        previousStatus: string | null;
-        pendingEncounter: import("@prisma/client/runtime/client").JsonValue | null;
-        currentPath: import("@prisma/client/runtime/client").JsonValue | null;
-        dungeonProgress: number | null;
-        dungeonData: import("@prisma/client/runtime/client").JsonValue | null;
         str: number;
         agi: number;
         dex: number;
         luk: number;
-        statPoints: number;
-        gold: number;
         energy: number;
         maxEnergy: number;
         userId: string;
+        actionStatus: string;
+        maxHp: number;
+        lastPulseAt: Date | null;
+        isPaused: boolean;
+        pendingEncounter: import("@prisma/client/runtime/client").JsonValue | null;
+        previousStatus: string | null;
+        statPoints: number;
+        currentPath: import("@prisma/client/runtime/client").JsonValue | null;
+        currentDepth: number;
+        dungeonData: import("@prisma/client/runtime/client").JsonValue | null;
+        dungeonProgress: number | null;
         equippedWeaponId: string | null;
         equippedChestId: string | null;
         equippedHelmetId: string | null;
         equippedBootsId: string | null;
+        equippedGlovesId: string | null;
+        equippedCapeId: string | null;
+        equippedNecklaceId: string | null;
+        equippedRing1Id: string | null;
+        equippedRing2Id: string | null;
+        gold: number;
     }>;
     /**
      * 🚶 Unequip an item from a slot
      */
-    unequipItem(characterId: string, slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS"): Promise<{
+    unequipItem(characterId: string, slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS" | "GLOVES" | "CAPE" | "NECKLACE" | "RING1" | "RING2"): Promise<{
         int: number;
         name: string;
         id: string;
@@ -50,28 +56,34 @@ export declare class EquipmentService {
         updatedAt: Date;
         level: number;
         exp: number;
-        maxHp: number;
-        currentDepth: number;
-        actionStatus: string;
-        lastPulseAt: Date | null;
-        previousStatus: string | null;
-        pendingEncounter: import("@prisma/client/runtime/client").JsonValue | null;
-        currentPath: import("@prisma/client/runtime/client").JsonValue | null;
-        dungeonProgress: number | null;
-        dungeonData: import("@prisma/client/runtime/client").JsonValue | null;
         str: number;
         agi: number;
         dex: number;
         luk: number;
-        statPoints: number;
-        gold: number;
         energy: number;
         maxEnergy: number;
         userId: string;
+        actionStatus: string;
+        maxHp: number;
+        lastPulseAt: Date | null;
+        isPaused: boolean;
+        pendingEncounter: import("@prisma/client/runtime/client").JsonValue | null;
+        previousStatus: string | null;
+        statPoints: number;
+        currentPath: import("@prisma/client/runtime/client").JsonValue | null;
+        currentDepth: number;
+        dungeonData: import("@prisma/client/runtime/client").JsonValue | null;
+        dungeonProgress: number | null;
         equippedWeaponId: string | null;
         equippedChestId: string | null;
         equippedHelmetId: string | null;
         equippedBootsId: string | null;
+        equippedGlovesId: string | null;
+        equippedCapeId: string | null;
+        equippedNecklaceId: string | null;
+        equippedRing1Id: string | null;
+        equippedRing2Id: string | null;
+        gold: number;
     }>;
     /**
      * 📊 Calculate Total Stats (Base + Gear)

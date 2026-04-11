@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { inventoryService } from "./inventoryService.js";
 /**
  * ⚒️ CraftingService
  * Handles the logic for forging new items from materials.
@@ -69,11 +70,15 @@ export class CraftingService {
         let rolledDef = null;
         let rolledStr = null;
         let rolledAgi = null;
+        let rolledInt = null;
+        let rolledLuk = null;
         if (isEquipment) {
             rolledAtk = this.rollStat(recipe.resultItem.statAtk || 0);
             rolledDef = this.rollStat(recipe.resultItem.statDef || 0);
             rolledStr = this.rollStat(recipe.resultItem.statStr || 0);
             rolledAgi = this.rollStat(recipe.resultItem.statAgi || 0);
+            rolledInt = this.rollStat(recipe.resultItem.statInt || 0);
+            rolledLuk = this.rollStat(recipe.resultItem.statLuk || 0);
         }
         // 7. Execute Craft (Atomic Transaction)
         await prisma.$transaction(async (tx) => {
@@ -92,72 +97,15 @@ export class CraftingService {
                     });
                 }
             }
-            if (isEquipment) {
-                // Equipment: Always create a new unique instance with rolled stats
-                // First, check if a "blank" (no rolled stats) version exists from old data
-                const existing = await tx.inventoryItem.findFirst({
-                    where: { characterId, itemCode: recipe.resultItemCode, rolledAtk: null }
-                });
-                if (existing) {
-                    // Upgrade existing blank item with rolled stats
-                    await tx.inventoryItem.update({
-                        where: { id: existing.id },
-                        data: { rolledAtk, rolledDef, rolledStr, rolledAgi }
-                    });
-                }
-                else {
-                    // Delete unique constraint conflict if exists, then create fresh
-                    // (player re-crafting the same equipment type)
-                    await tx.inventoryItem.create({
-                        data: {
-                            characterId,
-                            itemCode: recipe.resultItemCode,
-                            quantity: 1,
-                            rolledAtk,
-                            rolledDef,
-                            rolledStr,
-                            rolledAgi
-                        }
-                    }).catch(async () => {
-                        // Unique constraint hit — update the existing one with new rolls
-                        await tx.inventoryItem.update({
-                            where: {
-                                characterId_itemCode: {
-                                    characterId,
-                                    itemCode: recipe.resultItemCode
-                                }
-                            },
-                            data: { rolledAtk, rolledDef, rolledStr, rolledAgi, quantity: { increment: 1 } }
-                        });
-                    });
-                }
-            }
-            else {
-                // Non-equipment: Stack as usual (consumables, materials)
-                await tx.inventoryItem.upsert({
-                    where: {
-                        characterId_itemCode: {
-                            characterId,
-                            itemCode: recipe.resultItemCode
-                        }
-                    },
-                    update: {
-                        quantity: { increment: 1 }
-                    },
-                    create: {
-                        characterId,
-                        itemCode: recipe.resultItemCode,
-                        quantity: 1
-                    }
-                });
-            }
+            // Handle Result Creation via Centralized Service
+            await inventoryService.addItem(characterId, recipe.resultItemCode, 1, { rolledAtk, rolledDef, rolledStr, rolledAgi, rolledInt, rolledLuk }, tx);
         });
         return {
             success: true,
             message: isEquipment
-                ? `Item forged! Stats rolled: ATK ${rolledAtk || 0}, DEF ${rolledDef || 0}, STR ${rolledStr || 0}, AGI ${rolledAgi || 0}`
+                ? `Item forged! ATK:${rolledAtk || 0} DEF:${rolledDef || 0} STR:${rolledStr || 0} AGI:${rolledAgi || 0} INT:${rolledInt || 0} LUK:${rolledLuk || 0}`
                 : "Item crafted successfully!",
-            rolledStats: isEquipment ? { rolledAtk, rolledDef, rolledStr, rolledAgi } : null
+            rolledStats: isEquipment ? { rolledAtk, rolledDef, rolledStr, rolledAgi, rolledInt, rolledLuk } : null
         };
     }
 }

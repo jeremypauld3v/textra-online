@@ -39,6 +39,7 @@ export interface CharacterStatus {
     [key: string]: any;
   } | null;
   lastPulseAt?: string | null;
+  isPaused: boolean;
   str: number;
   agi: number;
   dex: number;
@@ -55,6 +56,11 @@ export interface CharacterStatus {
   equippedChest?: { id: string; template: any } | null;
   equippedHelmet?: { id: string; template: any } | null;
   equippedBoots?: { id: string; template: any } | null;
+  equippedGloves?: { id: string; template: any } | null;
+  equippedCape?: { id: string; template: any } | null;
+  equippedNecklace?: { id: string; template: any } | null;
+  equippedRing1?: { id: string; template: any } | null;
+  equippedRing2?: { id: string; template: any } | null;
   dungeonState?: any;
 }
 
@@ -67,6 +73,8 @@ export interface InventoryItem {
   rolledDef?: number | null;
   rolledStr?: number | null;
   rolledAgi?: number | null;
+  rolledInt?: number | null;
+  rolledLuk?: number | null;
 }
 
 export const gameApi = {
@@ -86,6 +94,11 @@ export const gameApi = {
         equippedChestId: string | null;
         equippedHelmetId: string | null;
         equippedBootsId: string | null;
+        equippedGlovesId: string | null;
+        equippedCapeId: string | null;
+        equippedNecklaceId: string | null;
+        equippedRing1Id: string | null;
+        equippedRing2Id: string | null;
       };
     }>("/game/inventory");
     return response.data;
@@ -105,6 +118,11 @@ export const gameApi = {
       message: string;
       status: string;
     }>("/game/travel", { direction });
+    return response.data;
+  },
+
+  pause: async (paused: boolean) => {
+    const response = await apiClient.post<{ success: boolean; isPaused: boolean }>("/game/travel/pause", { paused });
     return response.data;
   },
 
@@ -128,8 +146,13 @@ export const gameApi = {
     return response.data;
   },
 
-  unequip: async (slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS") => {
+  unequip: async (slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS" | "GLOVES" | "CAPE" | "NECKLACE" | "RING1" | "RING2") => {
     const response = await apiClient.post<{ success: boolean; message: string }>("/game/unequip", { slot });
+    return response.data;
+  },
+
+  reforge: async (inventoryItemId: string) => {
+    const response = await apiClient.post<{ success: boolean; item: any }>("/game/reforge", { inventoryItemId });
     return response.data;
   },
 

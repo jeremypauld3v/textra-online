@@ -8,20 +8,23 @@ export declare class MarketService {
      */
     getListings(): Promise<({
         template: {
-            statEnergy: number | null;
-            statHeal: number | null;
-            statDef: number | null;
-            statAtk: number | null;
-            statAgi: number | null;
-            statStr: number | null;
             code: string;
             name: string;
             emoji: string;
-            rarity: string;
             type: string;
             description: string;
+            statAtk: number | null;
+            statDef: number | null;
+            statStr: number | null;
+            statAgi: number | null;
+            statInt: number | null;
+            statLuk: number | null;
+            statDex: number | null;
+            statHeal: number | null;
+            statEnergy: number | null;
             levelReq: number;
             equipSlot: string | null;
+            rarityId: string;
         };
         seller: {
             name: string;
@@ -35,6 +38,8 @@ export declare class MarketService {
         rolledDef: number | null;
         rolledStr: number | null;
         rolledAgi: number | null;
+        rolledInt: number | null;
+        rolledLuk: number | null;
         sellerId: string;
         price: number;
     })[]>;
@@ -51,14 +56,16 @@ export declare class MarketService {
         rolledDef: number | null;
         rolledStr: number | null;
         rolledAgi: number | null;
+        rolledInt: number | null;
+        rolledLuk: number | null;
         sellerId: string;
         price: number;
     }>;
     /**
      * 🛒 Buy an item from the marketplace
-     * Atomic swap of Gold and Items.
+     * Atomic swap of Gold and Items. Supports partial stack buying.
      */
-    buyItem(buyerId: string, listingId: string): Promise<{
+    buyItem(buyerId: string, listingId: string, requestedQuantity: number): Promise<{
         success: boolean;
         message: string;
     }>;

@@ -38,7 +38,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#020617" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#000000" }}>
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -48,58 +48,58 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="absolute top-[0px] left-[-50px] w-96 h-96 bg-indigo-900/30 rounded-full blur-3xl opacity-50" />
+          <View className="absolute top-[0px] left-[-50px] w-96 h-96 bg-slate-100/10 rounded-full blur-3xl opacity-30" />
           
           <View className="z-10 py-10">
-            <Text className="text-5xl font-black text-white text-center tracking-widest mb-2 font-serif text-shadow">
+            <Text className="text-5xl font-bold text-white text-center tracking-widest mb-2 font-pixel-bold text-shadow">
               TEXTRA
             </Text>
-            <Text className="text-center text-indigo-400 font-medium tracking-widest mb-12 uppercase text-xs">
+            <Text className="text-center text-slate-300 font-bold tracking-widest mb-12 uppercase text-[10px] font-sans">
               The Infinite Realm
             </Text>
 
             <View className="space-y-4">
               <View>
-                <Text className="text-slate-400 text-sm font-semibold mb-2 uppercase tracking-wider ml-1">Email</Text>
+                <Text className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wider ml-1 font-pixel-bold">Email</Text>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
                   placeholder="wanderer@realm.com"
                   placeholderTextColor="#475569"
-                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-medium shadow-inner"
+                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-bold shadow-inner font-sans"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
               </View>
 
               <View className="mt-4">
-                <Text className="text-slate-400 text-sm font-semibold mb-2 uppercase tracking-wider ml-1">Password</Text>
+                <Text className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wider ml-1 font-pixel-bold">Password</Text>
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
                   placeholder="••••••••"
                   placeholderTextColor="#475569"
                   secureTextEntry
-                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-medium shadow-inner"
+                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-bold shadow-inner font-sans"
                 />
               </View>
 
               <TouchableOpacity 
                 onPress={handleLogin}
                 disabled={isLoading}
-                className={`w-full bg-indigo-600 py-4 rounded-xl mt-8 shadow-lg shadow-indigo-900/50 ${isLoading ? 'opacity-50' : ''}`}
+                className={`w-full bg-white py-4 rounded-xl mt-8 shadow-lg ${isLoading ? 'opacity-50' : ''}`}
               >
-                <Text className="text-white text-center font-bold text-lg tracking-wide">
+                <Text className="text-black text-center font-bold text-lg tracking-wide font-sans">
                   {isLoading ? 'Entering...' : 'Enter Realm'}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <View className="flex-row justify-center mt-8">
-              <Text className="text-slate-500">New traveler? </Text>
+              <Text className="text-slate-500 font-sans">New traveler? </Text>
               <Link href="/(auth)/register" asChild>
                 <TouchableOpacity>
-                  <Text className="text-indigo-400 font-bold">Forge an account</Text>
+                  <Text className="text-white font-bold underline font-sans">Forge an account</Text>
                 </TouchableOpacity>
               </Link>
             </View>

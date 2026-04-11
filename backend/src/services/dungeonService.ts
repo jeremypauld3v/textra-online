@@ -18,9 +18,13 @@ export class DungeonService {
     const dungeon = await prisma.dungeonTemplate.findFirst({
       where: {
         minDepth: { lte: character.currentDepth },
+        OR: [
+          { maxDepth: null },
+          { maxDepth: { gte: character.currentDepth } }
+        ],
         minLevel: { lte: character.level }
       },
-      orderBy: { minDepth: "desc" } // Pick the most relevant high-level dungeon for this depth
+      orderBy: { minDepth: "desc" }
     });
 
     if (!dungeon) return null;

@@ -1,3 +1,4 @@
+import { reforgeService } from "../services/reforgeService.js";
 import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma.js";
@@ -10,6 +11,7 @@ import { gameDataManager } from "../services/gameDataManager.js";
 import { marketService } from "../services/marketService.js";
 import { ENCOUNTER_INTERVAL, travelQueue, addTravelJob } from "../services/travelQueue.js";
 import { getIO } from "../socket.js";
+import { BACKEND_MESSAGES } from "../constants/gameBalance.js";
 
 export async function gameRoutes(server: FastifyInstance) {
   // GET /api/game/metadata
@@ -35,7 +37,7 @@ export async function gameRoutes(server: FastifyInstance) {
       await request.jwtVerify();
     } catch (err: any) {
       server.log.error(`JWT Verification Failed: ${err.message}`);
-      reply.status(401).send({ error: "Unauthorized", message: err.message });
+      reply.status(401).send({ error: BACKEND_MESSAGES.UNAUTHORIZED, message: err.message });
     }
   });
 
@@ -61,11 +63,11 @@ export async function gameRoutes(server: FastifyInstance) {
       });
 
       if (!character) {
-        return reply.status(404).send({ error: "Character not found" });
+        return reply.status(404).send({ error: BACKEND_MESSAGES.CHARACTER_NOT_FOUND });
       }
 
       // Fetch Equipped Item Details
-      const [weapon, chest, helmet, boots] = await Promise.all([
+      const gearResults = await Promise.all([
         character.equippedWeaponId
           ? prisma.inventoryItem.findUnique({
               where: { id: character.equippedWeaponId },
@@ -90,7 +92,39 @@ export async function gameRoutes(server: FastifyInstance) {
               include: { template: true },
             })
           : null,
+        character.equippedGlovesId
+          ? prisma.inventoryItem.findUnique({
+              where: { id: character.equippedGlovesId },
+              include: { template: true },
+            })
+          : null,
+        character.equippedCapeId
+          ? prisma.inventoryItem.findUnique({
+              where: { id: character.equippedCapeId },
+              include: { template: true },
+            })
+          : null,
+        character.equippedNecklaceId
+          ? prisma.inventoryItem.findUnique({
+              where: { id: character.equippedNecklaceId },
+              include: { template: true },
+            })
+          : null,
+        character.equippedRing1Id
+          ? prisma.inventoryItem.findUnique({
+              where: { id: character.equippedRing1Id },
+              include: { template: true },
+            })
+          : null,
+        character.equippedRing2Id
+          ? prisma.inventoryItem.findUnique({
+              where: { id: character.equippedRing2Id },
+              include: { template: true },
+            })
+          : null,
       ]);
+
+      const [weapon, chest, helmet, boots, gloves, cape, necklace, ring1, ring2] = gearResults;
 
       // Prune character from nested logs to prevent any potential circularity
       const latestBattles = character.battleLogs.map((log) => ({
@@ -131,6 +165,11 @@ export async function gameRoutes(server: FastifyInstance) {
           equippedChest: chest,
           equippedHelmet: helmet,
           equippedBoots: boots,
+          equippedGloves: gloves,
+          equippedCape: cape,
+          equippedNecklace: necklace,
+          equippedRing1: ring1,
+          equippedRing2: ring2,
         },
         latestBattles,
       });
@@ -292,13 +331,13 @@ export async function gameRoutes(server: FastifyInstance) {
       });
 
       if (!character) {
-        return reply.status(404).send({ error: "Character not found" });
+        return reply.status(404).send({ error: BACKEND_MESSAGES.CHARACTER_NOT_FOUND });
       }
 
       if (character.hp <= 0) {
         return reply
           .status(400)
-          .send({ error: "You are dead. Wait to revive." });
+          .send({ error: BACKEND_MESSAGES.DEAD_REMAIN });
       }
 
       let newStatus = "IDLE";
@@ -340,6 +379,27 @@ export async function gameRoutes(server: FastifyInstance) {
     }
   });
 
+  // POST /api/game/travel/pause
+  server.post("/travel/pause", async (request, reply) => {
+    const { characterId } = request.user as { characterId: string };
+    const { paused } = request.body as { paused: boolean };
+
+    try {
+      const char = await prisma.character.update({
+        where: { id: characterId },
+        data: { isPaused: paused }
+      });
+
+      if (!paused && (char.actionStatus === "TRAVELING_OUT" || char.actionStatus === "TRAVELING_IN" || char.actionStatus === "CAMPING")) {
+        await addTravelJob(characterId);
+      }
+
+      return reply.send({ success: true, isPaused: char.isPaused });
+    } catch (err) {
+      return reply.status(500).send({ error: "Failed to toggle pause" });
+    }
+  });
+
   // POST /api/game/resolve-encounter
   server.post("/resolve-encounter", async (request, reply) => {
     const { characterId } = request.user as { characterId: string };
@@ -353,7 +413,7 @@ export async function gameRoutes(server: FastifyInstance) {
       });
 
       if (!character || !character.pendingEncounter) {
-        return reply.status(400).send({ error: "No pending encounter found" });
+        return reply.status(400).send({ error: BACKEND_MESSAGES.NO_PENDING_ENCOUNTER });
       }
 
       const encounter: any = character.pendingEncounter;
@@ -406,7 +466,7 @@ export async function gameRoutes(server: FastifyInstance) {
         if (previousStatus !== "IDLE") {
           await travelQueue.add("pulse", { characterId }, { delay: ENCOUNTER_INTERVAL * 1000 });
         }
-        return reply.send({ success: true, message: "Encounter skipped. Resuming journey." });
+        return reply.send({ success: true, message: BACKEND_MESSAGES.ENCOUNTER_SKIPPED });
       }
 
       if (action === "attack" && encounter.type === "PVE") {
@@ -580,7 +640,7 @@ export async function gameRoutes(server: FastifyInstance) {
       });
 
       if (!character) {
-        return reply.status(404).send({ error: "Character not found" });
+        return reply.status(404).send({ error: BACKEND_MESSAGES.CHARACTER_NOT_FOUND });
       }
 
       if (character.statPoints <= 0) {
@@ -614,6 +674,11 @@ export async function gameRoutes(server: FastifyInstance) {
             equippedChestId: true,
             equippedHelmetId: true,
             equippedBootsId: true,
+            equippedGlovesId: true,
+            equippedCapeId: true,
+            equippedNecklaceId: true,
+            equippedRing1Id: true,
+            equippedRing2Id: true,
          }
       });
 
@@ -652,7 +717,7 @@ export async function gameRoutes(server: FastifyInstance) {
   server.post("/unequip", async (request, reply) => {
     const { characterId } = request.user as { characterId: string };
     const { slot } = request.body as {
-      slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS";
+      slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS" | "GLOVES" | "CAPE" | "NECKLACE" | "RING1" | "RING2";
     };
 
     try {
@@ -676,6 +741,21 @@ export async function gameRoutes(server: FastifyInstance) {
         inventoryItemId,
       );
       return reply.send(result);
+    } catch (e: any) {
+      return reply.status(400).send({ error: e.message });
+    }
+  });
+
+  /**
+   * 🎲 Reforge Item Stats
+   */
+  server.post("/reforge", async (request, reply) => {
+    const { characterId } = request.user as { characterId: string };
+    const { inventoryItemId } = request.body as { inventoryItemId: string };
+
+    try {
+      const result = await reforgeService.reforgeItem(characterId, inventoryItemId);
+      return reply.send({ success: true, item: result });
     } catch (e: any) {
       return reply.status(400).send({ error: e.message });
     }

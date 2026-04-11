@@ -4,8 +4,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../context/SocketContext";
 import { useGameStore } from "../store/useGameStore";
 import { gameApi, InventoryItem } from "../api/game";
-import QuantityTradeModal from "./QuantityTradeModal";
+import QuantityTradeModal from "@/components/QuantityTradeModal";
 import Toast from "react-native-toast-message";
+
+// UI Components
+import StandardButton from "@/components/ui/StandardButton";
+import ItemIcon from "@/components/ui/ItemIcon";
+import ScreenHeader from "@/components/ui/ScreenHeader";
 
 interface TradeModalProps {
   visible: boolean;
@@ -51,7 +56,6 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
 
   const handleManualClose = useCallback(() => {
      if (socket && targetUserId) {
-        console.log(`📡 [TRADE] Emitting cancel to ${targetUserId}`);
         socket.emit("trade_cancel", { targetUserId });
      }
      onClose();
@@ -59,7 +63,6 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
 
   useEffect(() => {
     if (visible && targetUserId) {
-       console.log(`✨ [TRADE] Opening Trade with ${targetUserId}`);
        fetchInventory();
     } else if (!visible) {
        // 🧹 SANITIZE STATE ON CLOSE
@@ -77,7 +80,6 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
 
     // Listen for their updates
     socket.on("trade_sync", (data: any) => {
-      console.log(`🔄 [TRADE] Sync from ${data.fromUserId}`);
       if (data.fromUserId === targetUserId) {
         setTheirItems(data.items);
         setTheirGold(data.gold);
@@ -86,9 +88,8 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
     });
 
     socket.on("trade_complete", (data: any) => {
-       console.log(`🏁 [TRADE] Complete: success=${data.success}`);
        if (data.success) {
-          Toast.show({ type: 'success', text1: 'Trade Success', text2: 'Transaction completed!' });
+          Toast.show({ type: "success", text1: "Trade Success", text2: "Transaction completed!" });
           onClose();
        } else {
           Alert.alert("Failed", data.error || "Trade failed");
@@ -96,7 +97,6 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
     });
 
     socket.on("trade_cancelled", () => {
-       console.log(`🛑 [TRADE] Partner cancelled`);
        onClose();
     });
 
@@ -110,7 +110,6 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
   // Sync my state to them
   useEffect(() => {
     if (socket && visible && !myLocked) {
-      console.log(`📤 [TRADE] Outgoing update to ${targetUserId}`);
       socket.emit("trade_update", {
         toUserId: targetUserId,
         items: myItems,
@@ -122,7 +121,6 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
 
   const toggleLock = () => {
     const nextLocked = !myLocked;
-    console.log(`🔒 [TRADE] Toggling lock: ${nextLocked}`);
     setMyLocked(nextLocked);
     socket?.emit("trade_update", {
       toUserId: targetUserId,
@@ -137,7 +135,6 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
        Alert.alert("Wait", "Both players must lock their offers first.");
        return;
     }
-    console.log(`💾 [TRADE] Committing final transaction`);
     socket?.emit("trade_commit", {
        targetUserId,
        myItems,
@@ -173,89 +170,92 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
 
   return (
     <Modal visible={visible} animationType="fade" transparent={false}>
-      <View className="flex-1 bg-slate-950 pt-20 px-6">
-        <View className="flex-row justify-between items-center mb-6">
-            <View>
-              <Text className="text-white text-3xl font-black italic uppercase">Exchange</Text>
-              <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Active Session • Player {targetUserId.substring(0,8)}</Text>
-            </View>
-            <TouchableOpacity onPress={handleManualClose} className="bg-slate-900 p-3 rounded-2xl border border-slate-800">
-              <Ionicons name="close" size={24} color="white" />
-            </TouchableOpacity>
-        </View>
+      <View className="flex-1 bg-slate-950 pt-16 px-6">
+        <ScreenHeader
+           title="Exchange"
+           subtitle={`Session • Player ${targetUserId.substring(0,8)}`}
+           rightElement={
+             <TouchableOpacity onPress={handleManualClose} className="bg-slate-900 p-2.5 rounded-2xl border border-slate-800">
+               <Ionicons name="close" size={24} color="white" />
+             </TouchableOpacity>
+           }
+        />
 
         {/* 🛡️ TRADE BOOTH */}
         <View className="flex-row space-x-2 mb-4">
                  {/* MY SIDE */}
-                 <View className={`flex-1 p-3 rounded-[32px] border ${myLocked ? 'bg-indigo-500/10 border-indigo-500/50 shadow-lg shadow-indigo-500/20' : 'bg-slate-900 border-white/5'}`}>
-                    <View className="flex-row justify-between items-center mb-3 px-1">
-                       <Text className="text-indigo-400 font-black text-[10px] uppercase tracking-tighter">Your Offer</Text>
-                       {myLocked && <Ionicons name="lock-closed" size={12} color="#6366f1" />}
+                 <View className={`flex-1 p-4 rounded-[32px] border ${myLocked ? "bg-indigo-500/5 border-indigo-500/50 shadow-lg shadow-indigo-500/20" : "bg-slate-900 border-white/5"}`}>
+                    <View className="flex-row justify-between items-center mb-4 px-1">
+                       <Text className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">Your Offer</Text>
+                       {myLocked && <Ionicons name="lock-closed" size={14} color="#6366f1" />}
                     </View>
-                    <View className="h-40 bg-black/20 rounded-2xl mb-3 p-2 border border-white/5">
+                    <View className="h-40 bg-slate-950/50 rounded-2xl mb-4 p-2 border border-white/5">
                        <FlatList
                          data={myItems}
                          keyExtractor={i => i.id}
-                         nestedScrollEnabled
+                         showsVerticalScrollIndicator={false}
                          renderItem={({ item }) => (
-                           <TouchableOpacity onPress={() => removeItem(item.id)} className="flex-row items-center mb-2 bg-slate-800/60 p-2 rounded-xl border border-white/5">
-                              <Text className="text-xl mr-2">{itemTemplates[item.itemCode]?.emoji || '📦'}</Text>
+                           <TouchableOpacity onPress={() => removeItem(item.id)} className="flex-row items-center mb-2 bg-slate-900/80 p-2 rounded-xl border border-white/5">
+                              <Text className="text-xl mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
                               <View className="flex-1">
-                                 <Text className="text-white text-[10px] font-bold" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                                 <Text className="text-indigo-400 text-[9px] font-black italic">Qty: {item.quantity}</Text>
+                                 <Text className="text-white text-[9px] font-bold uppercase" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                                 <Text className="text-indigo-400 text-[8px] font-black italic">Qty: {item.quantity}</Text>
                               </View>
                            </TouchableOpacity>
                          )}
                        />
                     </View>
-                    <TextInput 
-                      placeholder="Gold" 
-                      placeholderTextColor="#475569"
-                      keyboardType="numeric"
-                      className="text-white font-black bg-black/40 px-4 py-3 rounded-xl border border-white/5 text-xs text-center"
-                      value={myGold > 0 ? myGold.toString() : ""}
-                      editable={!myLocked}
-                      onChangeText={(v) => {
-                         const n = parseInt(v) || 0;
-                         setMyGold(n);
-                      }}
-                    />
+                    <View className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 flex-row items-center">
+                       <TextInput 
+                         placeholder="Gold" 
+                         placeholderTextColor="#334155"
+                         keyboardType="numeric"
+                         className="flex-1 text-white font-black text-xs text-center"
+                         value={myGold > 0 ? myGold.toString() : ""}
+                         editable={!myLocked}
+                         onChangeText={(v) => {
+                            const n = parseInt(v) || 0;
+                            setMyGold(n);
+                         }}
+                       />
+                       <Ionicons name="cash" size={14} color="#fbbf24" className="ml-2" />
+                    </View>
                  </View>
 
                  {/* THEIR SIDE */}
-                 <View className={`flex-1 p-3 rounded-[32px] border ${theirLocked ? 'bg-emerald-500/10 border-emerald-500/50 shadow-lg shadow-emerald-500/20' : 'bg-slate-900 border-white/5'}`}>
-                    <View className="flex-row justify-between items-center mb-3 px-1">
-                       <Text className="text-emerald-400 font-black text-[10px] uppercase tracking-tighter">Partner Offer</Text>
-                       {theirLocked && <Ionicons name="shield-checkmark" size={12} color="#10b981" />}
+                 <View className={`flex-1 p-4 rounded-[32px] border ${theirLocked ? "bg-emerald-500/5 border-emerald-500/50 shadow-lg shadow-emerald-500/20" : "bg-slate-900 border-white/5"}`}>
+                    <View className="flex-row justify-between items-center mb-4 px-1">
+                       <Text className="text-emerald-400 font-black text-[10px] uppercase tracking-widest">Partner Offer</Text>
+                       {theirLocked && <Ionicons name="shield-checkmark" size={14} color="#10b981" />}
                     </View>
-                    <View className="h-40 bg-black/20 rounded-2xl mb-3 p-2 border border-white/5">
+                    <View className="h-40 bg-slate-950/50 rounded-2xl mb-4 p-2 border border-white/5">
                        <FlatList
                          data={theirItems}
                          keyExtractor={i => i.id}
-                         nestedScrollEnabled
+                         showsVerticalScrollIndicator={false}
                          renderItem={({ item }) => (
-                           <View className="flex-row items-center mb-2 bg-slate-800/60 p-2 rounded-xl border border-white/5">
-                              <Text className="text-xl mr-2">{itemTemplates[item.itemCode]?.emoji || '📦'}</Text>
+                           <View className="flex-row items-center mb-2 bg-slate-900/80 p-2 rounded-xl border border-white/5">
+                              <Text className="text-xl mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
                               <View className="flex-1">
-                                 <Text className="text-white text-[10px] font-bold" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                                 <Text className="text-emerald-400 text-[9px] font-black italic">Qty: {item.quantity}</Text>
+                                 <Text className="text-white text-[9px] font-bold uppercase" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                                 <Text className="text-emerald-400 text-[8px] font-black italic">Qty: {item.quantity}</Text>
                               </View>
                            </View>
                          )}
                        />
                     </View>
-                    <View className="bg-black/40 px-3 py-3 rounded-xl h-11 justify-center border border-white/5 shadow-inner">
-                       <Text className="text-amber-400 font-black italic text-xs text-center">{theirGold} G</Text>
+                    <View className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 items-center justify-center">
+                       <Text className="text-amber-400 font-black italic text-xs text-center">{theirGold} Gold</Text>
                     </View>
                  </View>
         </View>
 
         {/* 📦 INVENTORY SELECTOR */}
         <View className="flex-1 bg-slate-900/50 rounded-t-[48px] p-6 border-t border-white/5 shadow-2xl">
-                 <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-slate-500 font-black uppercase text-[11px] tracking-widest">Vault Inventory</Text>
-                    <View className="bg-slate-800 px-3 py-1 rounded-full border border-white/5">
-                       <Text className="text-slate-400 text-[10px] font-bold">{inventory.length} Slots Used</Text>
+                 <View className="flex-row justify-between items-center mb-6 px-1">
+                    <Text className="text-slate-500 font-black uppercase text-[10px] tracking-widest">Vault Inventory</Text>
+                    <View className="bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
+                       <Text className="text-slate-600 text-[9px] font-bold">{inventory.length} Used</Text>
                     </View>
                  </View>
 
@@ -264,44 +264,35 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
                       data={inventory}
                       numColumns={4}
                       keyExtractor={i => i.id}
-                      columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 12 }}
+                      columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 12 }}
                       showsVerticalScrollIndicator={false}
                       renderItem={({ item }) => (
-                        <TouchableOpacity 
-                          onPress={() => attemptAddItem(item)}
-                          activeOpacity={0.7}
-                          className="w-[22%] aspect-square bg-slate-800 rounded-2xl items-center justify-center border border-white/5 shadow-lg"
-                        >
-                           <Text className="text-2xl">{itemTemplates[item.itemCode]?.emoji || '📦'}</Text>
-                           {item.quantity > 1 && (
-                              <View className="absolute bottom-1 right-1 bg-indigo-600 px-1.5 rounded-md">
-                                 <Text className="text-[9px] text-white font-black">{item.quantity}</Text>
-                              </View>
-                           )}
-                        </TouchableOpacity>
+                        <ItemIcon
+                           emoji={itemTemplates[item.itemCode]?.emoji || "📦"}
+                           quantity={item.quantity}
+                           onPress={() => attemptAddItem(item)}
+                           className="w-[22.5%]"
+                        />
                       )}
                    />
                  )}
         </View>
 
         {/* 🚀 ACTION BAR */}
-        <View className="pt-4 pb-8 flex-row space-x-3">
-                 <TouchableOpacity 
-                   onPress={toggleLock} 
-                   activeOpacity={0.8}
-                   className={`flex-1 p-5 rounded-3xl items-center border ${myLocked ? 'bg-amber-600 border-amber-400 shadow-amber-500/20' : 'bg-slate-800 border-slate-700'}`}
-                 >
-                    <Text className="text-white font-black uppercase tracking-widest text-[11px]">{myLocked ? "Revise Offer" : "Lock Proposal"}</Text>
-                 </TouchableOpacity>
-
-                 <TouchableOpacity 
-                   onPress={commitTrade}
-                   activeOpacity={0.8}
-                   disabled={!myLocked || !theirLocked}
-                   className={`flex-1 p-5 rounded-3xl items-center ${myLocked && theirLocked ? 'bg-emerald-600 border-emerald-400 shadow-emerald-500/30' : 'bg-slate-800 border-transparent opacity-50'}`}
-                 >
-                    <Text className="text-white font-black uppercase tracking-widest text-[11px]">Finalize</Text>
-                 </TouchableOpacity>
+        <View className="pt-4 pb-12 flex-row space-x-3">
+                 <StandardButton
+                    label={myLocked ? "Revise Offer" : "Lock Proposal"}
+                    variant={myLocked ? "warning" : "secondary"}
+                    className="flex-1"
+                    onPress={toggleLock}
+                 />
+                 <StandardButton
+                    label="Finalize"
+                    variant="success"
+                    className="flex-1"
+                    disabled={!myLocked || !theirLocked}
+                    onPress={commitTrade}
+                 />
         </View>
 
         {/* Partial Stack Modal */}

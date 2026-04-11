@@ -1,5 +1,5 @@
 import "./global.css";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast, { BaseToast, ErrorToast, InfoToast } from "react-native-toast-message";
 import { useEffect } from "react";
@@ -7,31 +7,38 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useGameStore } from "../store/useGameStore";
 import { SocketProvider, useSocket } from "../context/SocketContext";
 import { CustomAlert } from "../components/CustomAlert";
+import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
+
+SplashScreen.preventAutoHideAsync();
 
 const toastConfig = {
   success: (props: any) => (
     <BaseToast
       {...props}
-      style={{ borderLeftColor: '#10b981', backgroundColor: '#1e293b', height: 70 }}
+      style={{ borderLeftColor: '#10b981', backgroundColor: '#000', height: 'auto', minHeight: 60, paddingVertical: 10 }}
       contentContainerStyle={{ paddingHorizontal: 15 }}
       text1Style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}
-      text2Style={{ color: '#94a3b8', fontSize: 14 }}
+      text2Style={{ color: '#94a3b8', fontSize: 13 }}
+      text2NumberOfLines={0}
     />
   ),
   error: (props: any) => (
     <ErrorToast
       {...props}
-      style={{ borderLeftColor: '#ef4444', backgroundColor: '#1e293b', height: 70 }}
+      style={{ borderLeftColor: '#ef4444', backgroundColor: '#000', height: 'auto', minHeight: 60, paddingVertical: 10 }}
       text1Style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}
-      text2Style={{ color: '#94a3b8', fontSize: 14 }}
+      text2Style={{ color: '#94a3b8', fontSize: 13 }}
+      text2NumberOfLines={0}
     />
   ),
   info: (props: any) => (
     <InfoToast
       {...props}
-      style={{ borderLeftColor: '#6366f1', backgroundColor: '#1e293b', height: 70 }}
+      style={{ borderLeftColor: '#6366f1', backgroundColor: '#000', height: 'auto', minHeight: 60, paddingVertical: 10 }}
       text1Style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}
-      text2Style={{ color: '#94a3b8', fontSize: 14 }}
+      text2Style={{ color: '#94a3b8', fontSize: 13 }}
+      text2NumberOfLines={0}
     />
   )
 };
@@ -59,6 +66,12 @@ export default function RootLayout() {
   const fetchMetadata = useGameStore((state) => state.fetchMetadata);
   const router = useRouter();
   const segments = useSegments();
+  const rootNavigationState = useRootNavigationState();
+
+  const [fontsLoaded] = useFonts({
+    "Silkscreen-Regular": require("../assets/fonts/Silkscreen-Regular.ttf"),
+    "Silkscreen-Bold": require("../assets/fonts/Silkscreen-Bold.ttf"),
+  });
 
   useEffect(() => {
     hydrate();
@@ -66,6 +79,15 @@ export default function RootLayout() {
   }, [hydrate, fetchMetadata]);
 
   useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  useEffect(() => {
+    // If navigation isn't ready, don't try to redirect yet
+    if (!rootNavigationState?.key) return;
+
     const inAuthGroup = segments[0] === "(auth)";
 
     if (!token && !inAuthGroup) {
@@ -79,12 +101,17 @@ export default function RootLayout() {
       }, 1);
       return () => clearTimeout(timer);
     }
-  }, [token, segments, router]);
+  }, [token, segments, router, rootNavigationState?.key]);
+
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaProvider>
       <SocketProvider>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ 
+            headerShown: false, 
+            contentStyle: { backgroundColor: "#000000" } 
+        }} />
         <GlobalUI />
         <Toast config={toastConfig} />
       </SocketProvider>

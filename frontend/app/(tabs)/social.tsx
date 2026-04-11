@@ -161,7 +161,7 @@ export default function SocialScreen() {
       <View className="flex-1 px-4 pt-16">
         <View className="flex-row items-center justify-between mb-6">
            <View>
-              <Text className="text-3xl font-black text-white italic uppercase tracking-tighter">Social</Text>
+              <Text className="text-3xl font-bold text-white italic uppercase tracking-tighter font-sans">Social</Text>
               <View className="flex-row items-center mt-1">
                  <View className={`w-2 h-2 rounded-full mr-2 ${connected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                  <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-widest">
@@ -189,18 +189,18 @@ export default function SocialScreen() {
                    onPress={() => item.userId !== currentUserId && setSelectedUser({ userId: item.userId, name: item.characterName })}
                    className={`mb-4 max-w-[80%] ${item.userId === currentUserId ? 'self-end items-end' : 'self-start items-start'}`}
                 >
-                   <Text className="text-[10px] text-slate-500 mb-1 font-bold uppercase ml-1">
+                   <Text className="text-[10px] text-slate-500 mb-1 font-bold uppercase ml-1 font-sans">
                       {item.userId === currentUserId ? 'You' : `${item.characterName || `Player ${item.userId.substring(0, 4)}`}`}
                    </Text>
                    <View className={`p-4 rounded-3xl ${item.userId === currentUserId ? 'bg-sky-600 rounded-tr-none' : 'bg-slate-800 rounded-tl-none'}`}>
-                      <Text className="text-white font-medium">{item.message}</Text>
+                      <Text className="text-white font-bold font-sans">{item.message}</Text>
                    </View>
                 </TouchableOpacity>
              )}
              ListEmptyComponent={
                 <View className="flex-1 justify-center items-center py-20">
                    <Ionicons name="chatbubbles-outline" size={48} color="#1e293b" />
-                   <Text className="text-slate-600 italic mt-4">Welcome to World Chat!</Text>
+                   <Text className="text-slate-600 font-bold italic mt-4 font-sans">Welcome to World Chat!</Text>
                 </View>
              }
            />
@@ -212,7 +212,7 @@ export default function SocialScreen() {
               <TextInput
                 placeholder="Message world..."
                 placeholderTextColor="#475569"
-                className="flex-1 text-white"
+                className="flex-1 text-white font-bold font-sans"
                 value={input}
                 onChangeText={setInput}
                 onSubmitEditing={sendMessage}
@@ -236,7 +236,7 @@ export default function SocialScreen() {
           onPress={() => setSelectedUser(null)}
         >
           <View className="bg-slate-900 w-full rounded-[40px] p-6 border border-white/10">
-            <Text className="text-white text-xl font-bold mb-6 text-center italic uppercase">Interaction: {selectedUser?.name}</Text>
+            <Text className="text-white text-xl font-bold mb-6 text-center italic uppercase font-sans">Interaction: {selectedUser?.name}</Text>
             
             <View className="space-y-3">
               <TouchableOpacity 
@@ -283,7 +283,7 @@ export default function SocialScreen() {
       <Modal visible={isFriendListVisible} animationType="slide">
         <View className="flex-1 bg-slate-950 px-6 pt-16">
           <View className="flex-row items-center justify-between mb-8">
-            <Text className="text-2xl font-black text-white italic uppercase">Friends</Text>
+            <Text className="text-2xl font-bold text-white italic uppercase font-sans">Friends</Text>
             <TouchableOpacity onPress={() => setIsFriendListVisible(false)}>
               <Ionicons name="close" size={32} color="white" />
             </TouchableOpacity>
@@ -302,9 +302,9 @@ export default function SocialScreen() {
             <TouchableOpacity 
               onPress={() => handleAddFriend(targetIGN)}
               disabled={isAddingFriend}
-              className={`bg-indigo-600 px-6 py-3 rounded-2xl ${isAddingFriend ? 'opacity-50' : ''}`}
+              className={`bg-white px-6 py-3 rounded-2xl ${isAddingFriend ? 'opacity-50' : ''}`}
             >
-              <Text className="text-white font-black text-xs uppercase">Add</Text>
+              <Text className="text-black font-black text-xs uppercase">Add</Text>
             </TouchableOpacity>
           </View>
 
@@ -318,8 +318,8 @@ export default function SocialScreen() {
                   <View className="flex-row items-center">
                     <View className={`w-3 h-3 rounded-full mr-3 ${isOnline ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50' : 'bg-slate-700'}`} />
                     <View>
-                      <Text className="text-white font-bold text-lg">{item.name}</Text>
-                      <Text className="text-slate-500 text-xs font-bold uppercase">Level {item.level} • {isOnline ? 'Active' : 'Offline'}</Text>
+                      <Text className="text-white font-bold text-lg font-sans">{item.name}</Text>
+                      <Text className="text-slate-500 text-[10px] font-bold uppercase font-sans">Level {item.level} • {isOnline ? 'Active' : 'Offline'}</Text>
                     </View>
                   </View>
                   
@@ -346,7 +346,7 @@ export default function SocialScreen() {
             }}
             ListEmptyComponent={
               <View className="flex-1 justify-center items-center py-20">
-                <Text className="text-slate-600 italic">No friends yet. Find players in chat!</Text>
+                <Text className="text-slate-600 italic font-sans">No friends yet. Find players in chat!</Text>
               </View>
             }
           />
@@ -362,8 +362,8 @@ export default function SocialScreen() {
           <View className="flex-1 px-6 pt-16">
             <View className="flex-row items-center justify-between mb-8">
               <View>
-                <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Private Conversation</Text>
-                <Text className="text-2xl font-black text-sky-400 italic uppercase underline">{activePmUser?.name}</Text>
+                <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-widest font-sans">Private Conversation</Text>
+                <Text className="text-2xl font-bold text-white italic uppercase underline font-sans">{activePmUser?.name}</Text>
               </View>
               <TouchableOpacity onPress={() => setActivePmUser(null)}>
                 <Ionicons name="close" size={32} color="white" />
@@ -376,10 +376,10 @@ export default function SocialScreen() {
                   key={idx}
                   className={`mb-4 max-w-[80%] ${msg.fromUserId === currentUserId ? 'self-end items-end' : 'self-start items-start'}`}
                 >
-                  <View className={`p-4 rounded-3xl ${msg.fromUserId === currentUserId ? 'bg-sky-600 rounded-tr-none' : 'bg-slate-800 rounded-tl-none'}`}>
-                    <Text className="text-white font-medium">{msg.message}</Text>
+                  <View className={`p-4 rounded-3xl ${msg.fromUserId === currentUserId ? 'bg-white rounded-tr-none' : 'bg-slate-800 rounded-tl-none'}`}>
+                    <Text className={`font-bold font-sans ${msg.fromUserId === currentUserId ? 'text-black' : 'text-white'}`}>{msg.message}</Text>
                   </View>
-                  <Text className="text-[8px] text-slate-600 mt-1 uppercase font-bold">
+                  <Text className="text-[8px] text-slate-600 mt-1 uppercase font-bold font-sans">
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 </View>
@@ -391,7 +391,7 @@ export default function SocialScreen() {
                 <TextInput
                   placeholder="Private message..."
                   placeholderTextColor="#475569"
-                  className="text-white"
+                  className="text-white font-bold font-sans"
                   value={pmInput}
                   onChangeText={setPmInput}
                   onSubmitEditing={sendPrivateMessage}
@@ -399,9 +399,9 @@ export default function SocialScreen() {
               </View>
               <TouchableOpacity 
                 onPress={sendPrivateMessage}
-                className="w-14 h-14 bg-sky-500 rounded-full justify-center items-center"
+                className="w-14 h-14 bg-white rounded-full justify-center items-center"
               >
-                <Ionicons name="send" size={20} color="white" />
+                <Ionicons name="send" size={20} color="black" />
               </TouchableOpacity>
             </View>
           </View>

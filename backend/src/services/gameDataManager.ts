@@ -17,9 +17,10 @@ class GameDataManager {
 
     console.log("🔄 Syncing Game Metadata from Database...");
 
-    const [items, monsters] = await Promise.all([
-      prisma.itemTemplate.findMany(),
-      prisma.monsterTemplate.findMany({ include: { lootTable: true } })
+    const [items, monsters, rarities] = await Promise.all([
+      prisma.itemTemplate.findMany({ include: { rarity: true } }),
+      prisma.monsterTemplate.findMany({ include: { lootTable: { include: { item: { include: { rarity: true } } } } } }),
+      prisma.rarity.findMany()
     ]);
 
     this.itemCache.clear();
@@ -46,15 +47,33 @@ class GameDataManager {
     return this.monsterCache.get(name);
   }
 
-  async getRandomMonster() {
+  async getRandomMonster(depth: number) {
     await this.initialize();
     const monsters = Array.from(this.monsterCache.values());
-    return monsters[Math.floor(Math.random() * monsters.length)];
+    
+    // Filter monsters by depth
+    const eligible = monsters.filter(m => (m.minDepth || 0) <= depth);
+    
+    // Fallback to all monsters if none found (shouldn't happen with Forest Slime at minDepth 0)
+    const pool = eligible.length > 0 ? eligible : monsters;
+    
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   async getResourceNodes() {
-    // These are static enough to fetch directly or cache similarly
-    return prisma.resourceNodeTemplate.findMany();
+    return prisma.resourceNodeTemplate.findMany({
+      include: {
+        lootTable: {
+          include: {
+            item: {
+              include: {
+                rarity: true
+              }
+            }
+          }
+        }
+      }
+    });
   }
 }
 

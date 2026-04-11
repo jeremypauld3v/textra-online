@@ -4,6 +4,7 @@ import { equipmentService } from "./equipmentService.js";
 import { inventoryService } from "./inventoryService.js";
 import type { Character } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { GAME_BALANCE } from "../constants/gameBalance.js";
 
 export interface TurnLog {
   turn: number;
@@ -48,23 +49,23 @@ export async function generatePVEEncounter(character: Character) {
   const depth = character.currentDepth;
   const tier = getDepthTier(depth);
   
-  const monster = await gameDataManager.getRandomMonster();
+  const monster = await gameDataManager.getRandomMonster(depth);
   if (!monster) throw new Error("No monsters defined in database");
   
   const hpMult = (1 + (depth / 200)) * tier.dangerMult;
   const statMult = (1 + (depth / 250)) * tier.dangerMult;
   const expMult = (1 + (Math.floor(depth / 50) * 0.05)) * tier.expMult;
 
-  const scaledHp = Math.floor(monster.hp * hpMult) + (character.level * 5);
+  const scaledHp = Math.floor(monster.hp * hpMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
 
   return {
     type: "PVE",
     name: tier.prefix + monster.name,
     hp: scaledHp,
     maxHp: scaledHp,
-    attack: Math.floor(monster.attack * statMult) + Math.floor(character.level * 1.2),
-    defense: Math.floor(monster.defense * statMult) + Math.floor(character.level * 1.2),
-    expValue: Math.floor(monster.expReward * expMult) + (character.level * 2)
+    attack: Math.floor(monster.attack * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+    defense: Math.floor(monster.defense * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+    expValue: Math.floor(monster.expReward * expMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_EXP_BONUS)
   };
 }
 
@@ -76,21 +77,20 @@ export async function generateGatheringEncounter(character: Character) {
   const node = nodes[Math.floor(Math.random() * nodes.length)];
   if (!node) throw new Error("Failed to select resource node");
 
-  const amount = Math.floor(Math.random() * 3) + 1;
-  const hpMult = 1 + (depth / 300);
-  const rewardMult = 1 + (depth / 500);
+  const tier = getDepthTier(depth);
+  const hpMult = (1 + (depth / 300)) * tier.dangerMult;
+  const rewardMult = (1 + (depth / 500)) * tier.expMult;
 
-  const integrity = Math.floor((node.baseHp + (amount * 5)) * hpMult);
+  const integrity = Math.floor(node.baseHp * hpMult);
 
   return {
     type: "GATHERING",
     name: node.name,
     icon: node.icon,
-    amount,
     hp: integrity,
     maxHp: integrity,
-    xpReward: Math.floor((node.xpReward * amount) * rewardMult),
-    itemCode: node.itemCode
+    xpReward: Math.floor(node.xpReward * rewardMult),
+    resourceNodeTemplateId: node.id
   };
 }
 
@@ -109,7 +109,7 @@ export async function executeCombat(character: Character, enemy: any) {
 
   while (playerHp > 0 && enemyHp > 0) {
     let playerDamage = Math.max(1, Math.floor(playerAttack - enemyDefense + (Math.random() * 4)));
-    const isCrit = Math.random() < (character.luk * 0.02);
+    const isCrit = Math.random() < (stats.luk * GAME_BALANCE.BASE_CRIT_MODIFIER);
     if (isCrit) playerDamage *= 2;
 
     enemyHp -= playerDamage;
@@ -123,7 +123,7 @@ export async function executeCombat(character: Character, enemy: any) {
     if (enemyHp <= 0) break;
 
     let enemyDamage = Math.max(1, Math.floor(enemyAttack - playerDefense + (Math.random() * 3)));
-    const isDodged = Math.random() < (character.agi * 0.015);
+    const isDodged = Math.random() < (stats.agi * GAME_BALANCE.BASE_DODGE_MODIFIER);
     if (isDodged) {
       combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: 0, message: `${enemy.name} attacks, but ${character.name} dodged swiftlly!` });
     } else {
@@ -146,7 +146,7 @@ export async function executeCombat(character: Character, enemy: any) {
   let nextStatus = character.previousStatus || "IDLE";
 
   if (isWin) {
-    const healAmount = Math.floor(nextMaxHp * 0.2);
+    const healAmount = Math.floor(nextMaxHp * GAME_BALANCE.VICTORY_HEAL_PCT);
     nextHp = Math.min(nextMaxHp, nextHp + healAmount);
   } else {
     nextHp = nextMaxHp;
@@ -172,20 +172,8 @@ export async function executeCombat(character: Character, enemy: any) {
   if (isWin) {
     const monsterTemplate = await gameDataManager.getMonster(enemy.name.replace(/^\[.*\] /, ""));
     if (monsterTemplate && monsterTemplate.lootTable) {
-      const tier = getDepthTier(character.currentDepth);
-      const lootMult = (1 + (Math.floor(character.currentDepth / 50) * 0.02)) * tier.lootMult;
-      
-      for (const entry of monsterTemplate.lootTable) {
-        const dropChance = Math.min(0.9, entry.chance * lootMult);
-        if (Math.random() < dropChance) {
-          try {
-            await inventoryService.addItem(character.id, entry.itemCode, 1);
-            lootedItems.push(entry.itemCode);
-          } catch (e: any) {
-            console.warn(`Loot failed: ${e.message}`);
-          }
-        }
-      }
+      const lootResult = await resolveLootRolls(character, stats, monsterTemplate.lootTable);
+      lootedItems.push(...lootResult);
     }
   }
 
@@ -201,7 +189,6 @@ export async function executeCombat(character: Character, enemy: any) {
 
   return { success: true, isWin, updatedChar, log: savedLog, loot: lootedItems };
 }
-
 export async function executeGathering(character: Character, node: any) {
   const stats = await equipmentService.getCharacterCombatStats(character.id);
   const gatherPower = Math.max(2, Math.floor(stats.dex * 1.5 + stats.int * 0.5));
@@ -211,7 +198,7 @@ export async function executeGathering(character: Character, node: any) {
 
   while (integrity > 0 && turnCounter <= 20) {
     let damage = Math.max(3, Math.floor(gatherPower + (Math.random() * 5)));
-    const isPerfect = Math.random() < (character.luk * 0.03);
+    const isPerfect = Math.random() < (stats.luk * GAME_BALANCE.GATHER_CRIT_MODIFIER);
     if (isPerfect) damage *= 2;
 
     integrity -= damage;
@@ -224,7 +211,7 @@ export async function executeGathering(character: Character, node: any) {
     turnCounter++;
   }
 
-  const { level, exp, levelGain } = calculateLevelUp(character.level, character.exp, node.xpReward);
+  const { level, exp, levelGain } = calculateLevelUp(character.level, character.exp, node.xpReward || 0);
 
   const updatedChar = await prisma.character.update({
     where: { id: character.id },
@@ -238,19 +225,105 @@ export async function executeGathering(character: Character, node: any) {
     }
   });
 
-  if (node.itemCode) {
-    try {
-      await inventoryService.addItem(character.id, node.itemCode, node.amount);
-    } catch (e: any) {
-      console.warn(`Gathering failed: ${e.message}`);
+  const savedLog = await prisma.battleLog.create({
+    data: { characterId: character.id, enemyName: `Gathering: ${node.name}`, isWin: true, expGained: node.xpReward || 0, logDetails: gatherLog as any }
+  });
+
+  const lootedItems: any[] = [];
+  const nodes = await gameDataManager.getResourceNodes();
+  const nodeTemplate = nodes.find(n => n.id === node.resourceNodeTemplateId);
+  
+  if (nodeTemplate && nodeTemplate.lootTable) {
+    const lootResult = await resolveLootRolls(character, stats, nodeTemplate.lootTable);
+    lootedItems.push(...lootResult);
+  }
+
+  return { success: true, type: "GATHERING", item: node.name, amount: lootedItems.length, updatedChar, log: savedLog, startIntegrity: node.maxHp, loot: lootedItems };
+}
+
+/**
+ * 🎲 EQUIPMENT STAT ROLLER
+ * Generates random variances for item stats.
+ */
+function generateEquipmentRolls(stats: any, template: any) {
+  const luckBonus = (stats.luk * 0.005); // 100 LUK = +50% roll floor improvement
+  const minMult = 0.8 + luckBonus;
+  const maxMult = 1.2 + luckBonus;
+
+  const roll = (base: number) => {
+    if (!base) return null;
+    const mult = minMult + (Math.random() * (maxMult - minMult));
+    return Math.floor(base * mult);
+  };
+
+  return {
+    rolledAtk: roll(template.statAtk),
+    rolledDef: roll(template.statDef),
+    rolledStr: roll(template.statStr),
+    rolledAgi: roll(template.statAgi),
+    rolledInt: roll(template.statInt),
+    rolledLuk: roll(template.statLuk),
+  };
+}
+
+/**
+ * 🎲 UNIVERSAL LOOT ROLLER
+ * Handles depth-scaling, Rarity modifiers, and Luck bonuses.
+ */
+async function resolveLootRolls(character: Character, stats: any, lootTable: any[]) {
+  const depth = character.currentDepth;
+  const tier = getDepthTier(depth);
+  const lootedCodes: string[] = [];
+
+  // Base Multiplier: 1 + (Depth / Interval * Growth) + (LUK * Bonus)
+  const depthIntervals = Math.floor(depth / GAME_BALANCE.LOOT_DEPTH_INTERVAL);
+  const baseDepthMult = (depthIntervals * GAME_BALANCE.LOOT_CHANCE_GROWTH);
+  const lukMult = (stats.luk * GAME_BALANCE.LOOT_LUK_QUALITY_BONUS);
+  
+  const totalLootMult = (1 + baseDepthMult + lukMult) * tier.lootMult;
+  const quantityMult = 1 + (depthIntervals * GAME_BALANCE.LOOT_QUANTITY_GROWTH);
+
+  for (const entry of lootTable) {
+    // Rarity scaling: Rare items benefit more from high depth multipliers
+    // item.rarity might be included if we eager load it in GameDataManager
+    const rarityRank = entry.item?.rarity?.rank || 1;
+    const rarityScale = Math.pow(totalLootMult, 1 + (rarityRank * 0.05));
+    
+    // Apply depth bonus specific to the loot entry if any
+    const finalChance = Math.min(0.9, (entry.chance + (depth * entry.depthBonus)) * rarityScale);
+
+    if (Math.random() < finalChance) {
+      const baseQty = Math.floor(Math.random() * (entry.maxQuantity - entry.minQuantity + 1)) + entry.minQuantity;
+      const finalQty = Math.max(1, Math.floor(baseQty * quantityMult));
+
+      try {
+        const itemTemplate = await gameDataManager.getItem(entry.itemCode);
+        let rolls = {};
+        if (itemTemplate?.type === "EQUIPMENT") {
+            rolls = generateEquipmentRolls(stats, itemTemplate);
+        }
+
+        await inventoryService.addItem(character.id, entry.itemCode, finalQty, rolls);
+        lootedCodes.push(`${entry.itemCode} x${finalQty}`);
+      } catch (e: any) {
+        console.warn(`Loot failed: ${e.message}`);
+      }
     }
   }
 
-  const savedLog = await prisma.battleLog.create({
-    data: { characterId: character.id, enemyName: `Gathering: ${node.name}`, isWin: true, expGained: node.xpReward, logDetails: gatherLog as any }
-  });
+  // SURPRISE WORLD DROPS (Rare chance to hit Mythical gear)
+  const worldDropChance = GAME_BALANCE.GLOBAL_MYTHICAL_CHANCE * totalLootMult;
+  if (Math.random() < worldDropChance) {
+    const allItems = await gameDataManager.getAllItems();
+    const mythicalItems = allItems.filter(i => i.rarityId === "MYTHICAL");
+    if (mythicalItems.length > 0) {
+      const drop = mythicalItems[Math.floor(Math.random() * mythicalItems.length)];
+      await inventoryService.addItem(character.id, drop.code, 1);
+      lootedCodes.push(`${drop.code} (WORLD DROP!)`);
+    }
+  }
 
-  return { success: true, type: "GATHERING", item: node.name, amount: node.amount, updatedChar, log: savedLog, startIntegrity: node.maxHp };
+  return lootedCodes;
 }
 
 /**
@@ -272,7 +345,7 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
 
   while (p1Hp > 0 && p2Hp > 0 && turn <= 100) {
     let d1 = Math.max(1, Math.floor(attackerStats.atk - defenderStats.def + (Math.random() * 5)));
-    const c1 = Math.random() < (attackerChar.luk * 0.02);
+    const c1 = Math.random() < (attackerStats.luk * GAME_BALANCE.PVP_CRIT_MODIFIER);
     if (c1) d1 *= 2;
     p2Hp -= d1;
     combatLog.push({ turn, attacker: "Player", damage: d1, message: `${attackerChar.name} hits ${defenderChar.name} for ${d1}!${c1 ? ' CRIT!' : ''}` });
@@ -280,7 +353,7 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
     if (p2Hp <= 0) break;
 
     let d2 = Math.max(1, Math.floor(defenderStats.atk - attackerStats.def + (Math.random() * 5)));
-    const c2 = Math.random() < (defenderChar.luk * 0.02);
+    const c2 = Math.random() < (defenderStats.luk * GAME_BALANCE.PVP_CRIT_MODIFIER);
     if (c2) d2 *= 2;
     p1Hp -= d2;
     combatLog.push({ turn, attacker: "Enemy", damage: d2, message: `${defenderChar.name} hits ${attackerChar.name} for ${d2}!` });
@@ -291,9 +364,9 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
   const winner = isAttackerWin ? attackerChar : defenderChar;
   const loser = isAttackerWin ? defenderChar : attackerChar;
 
-  const healAmount = Math.floor(winner.maxHp * 0.2);
+  const healAmount = Math.floor(winner.maxHp * GAME_BALANCE.VICTORY_HEAL_PCT);
   const winnerNextHp = Math.min(winner.maxHp, (isAttackerWin ? p1Hp : p2Hp) + healAmount);
-  const loserGoldLost = Math.floor(loser.gold * 0.1);
+  const loserGoldLost = Math.floor(loser.gold * GAME_BALANCE.DEATH_PENALTY_GOLD_PCT);
   const droppedItems: string[] = [];
   
   await prisma.$transaction(async (tx) => {
@@ -302,7 +375,7 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
 
     const loserInv = await tx.inventoryItem.findMany({ where: { characterId: loser.id } });
     for (const item of loserInv) {
-       if (Math.random() < 0.5) {
+       if (Math.random() < GAME_BALANCE.PVP_LOOT_DROP_CHANCE) {
           await tx.inventoryItem.delete({ where: { id: item.id } });
        } else {
           const existing = await tx.inventoryItem.findFirst({ where: { characterId: winner.id, itemCode: item.itemCode, rolledAtk: item.rolledAtk } });

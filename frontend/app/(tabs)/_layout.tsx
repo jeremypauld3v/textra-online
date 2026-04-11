@@ -11,18 +11,21 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#020617", // slate-950
+          backgroundColor: "#000000",
           borderTopWidth: 1,
-          borderTopColor: "#1e293b", // slate-800
+          borderTopColor: "#111111",
           paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
           paddingTop: 10,
           height: Platform.OS === "ios" ? 85 + insets.bottom : 65 + (insets.bottom > 0 ? insets.bottom : 0),
         },
-        tabBarActiveTintColor: "#818cf8", // indigo-400
-        tabBarInactiveTintColor: "#475569", // slate-600
+        tabBarActiveTintColor: "#FFFFFF",
+        tabBarInactiveTintColor: "#555555",
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "600",
+          fontFamily: "Silkscreen-Regular",
+          fontSize: 9,
+          fontWeight: "500",
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
         },
       }}
     >
