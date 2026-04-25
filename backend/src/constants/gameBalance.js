@@ -11,7 +11,7 @@ export const GAME_BALANCE = {
   TRAVEL_OUT_DISTANCE: 5,
   TRAVEL_IN_DISTANCE: 10, // returning is faster
   // 🎲 Encounter Probabilities
-  PVP_AMBUSH_CHANCE: 5.0,
+  PVP_AMBUSH_CHANCE: 0.05,
   BASE_SPAWN_CHANCE: 0.3,
   MAX_SPAWN_CHANCE: 0.5,
   DUNGEON_ENCOUNTER_CHANCE: 0.15,
@@ -22,9 +22,9 @@ export const GAME_BALANCE = {
   BASE_DODGE_MODIFIER: 0.015,
   GATHER_CRIT_MODIFIER: 0.03,
   VICTORY_HEAL_PCT: 0.2, // restore 20% HP after win
-  PVP_CRIT_MODIFIER: 0.0,
-  PVP_FLEE_CHANCE_CAP: 0.0,
-  PVP_FLEE_AGI_DIVISOR: 0.0,
+  PVP_CRIT_MODIFIER: 0.02,
+  PVP_FLEE_CHANCE_CAP: 0.8,
+  PVP_FLEE_AGI_DIVISOR: 20,
   // 💰 Economy & Death
   DEATH_PENALTY_GOLD_PCT: 0.1, // lose 10% gold on PVP death
   PVP_LOOT_DROP_CHANCE: 0.5, // 50% chance to lose/drop inventory items in PVP
