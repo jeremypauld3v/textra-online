@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { gameDataManager } from "../services/gameDataManager.js";
 import { GAME_BALANCE } from "../constants/gameBalance.js";
 import { zoneService } from "../services/zoneService.js";
+import { inventoryService } from "../services/inventoryService.js";
 import { getIO } from "../socket.js";
 
 export async function adminRoutes(server: FastifyInstance) {
@@ -41,8 +42,26 @@ export async function adminRoutes(server: FastifyInstance) {
   server.post("/items", async (request) => {
     const data = request.body as any;
     const item = await prisma.itemTemplate.create({ data });
-    await gameDataManager.initialize();
+    await gameDataManager.initialize(true);
     return item;
+  });
+
+  server.put("/items/:code", async (request) => {
+    const { code } = request.params as any;
+    const data = request.body as any;
+    const item = await prisma.itemTemplate.update({
+      where: { code },
+      data
+    });
+    await gameDataManager.initialize(true);
+    return item;
+  });
+
+  server.delete("/items/:code", async (request) => {
+    const { code } = request.params as any;
+    await prisma.itemTemplate.delete({ where: { code } });
+    await gameDataManager.initialize(true);
+    return { success: true };
   });
 
   // --- Players ---
@@ -88,6 +107,44 @@ export async function adminRoutes(server: FastifyInstance) {
       data: updateData,
     });
     return updated;
+  });
+
+  server.post("/players/:id/inventory", async (request) => {
+    const { id } = request.params as any;
+    const { itemCode, quantity } = request.body as any;
+    
+    return await inventoryService.addItem(id, itemCode, quantity || 1);
+  });
+
+  server.delete("/players/:id/inventory/:itemId", async (request) => {
+    const { id, itemId } = request.params as any;
+    
+    await prisma.inventoryItem.delete({
+      where: { 
+        id: itemId,
+        characterId: id
+      }
+    });
+    
+    return { success: true };
+  });
+
+  server.delete("/players/:id/inventory", async (request) => {
+    const { id } = request.params as any;
+    const { itemIds } = request.body as any;
+
+    if (!Array.isArray(itemIds)) {
+      throw new Error("itemIds must be an array");
+    }
+
+    await prisma.inventoryItem.deleteMany({
+      where: {
+        characterId: id,
+        id: { in: itemIds }
+      }
+    });
+
+    return { success: true };
   });
 
   // --- Monsters ---
@@ -158,14 +215,14 @@ export async function adminRoutes(server: FastifyInstance) {
       return updated;
     });
 
-    await gameDataManager.initialize();
+    await gameDataManager.initialize(true);
     return monster;
   });
 
   server.delete("/monsters/:id", async (request) => {
     const { id } = request.params as any;
     await prisma.monsterTemplate.delete({ where: { id } });
-    await gameDataManager.initialize();
+    await gameDataManager.initialize(true);
     return { success: true };
   });
 
@@ -193,7 +250,7 @@ export async function adminRoutes(server: FastifyInstance) {
         } : undefined
       }
     });
-    await gameDataManager.initialize();
+    await gameDataManager.initialize(true);
     return node;
   });
 
@@ -230,14 +287,14 @@ export async function adminRoutes(server: FastifyInstance) {
       return updated;
     });
 
-    await gameDataManager.initialize();
+    await gameDataManager.initialize(true);
     return node;
   });
 
   server.delete("/resource-nodes/:id", async (request) => {
     const { id } = request.params as any;
     await prisma.resourceNodeTemplate.delete({ where: { id } });
-    await gameDataManager.initialize();
+    await gameDataManager.initialize(true);
     return { success: true };
   });
 

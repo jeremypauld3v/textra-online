@@ -1,5 +1,6 @@
-import { Modal, View, Text, Pressable } from "react-native";
+import { Modal, View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown, Easing } from "react-native-reanimated";
 
 interface BaseModalProps {
   visible: boolean;
@@ -22,46 +23,62 @@ export default function BaseModal({
 }: BaseModalProps) {
   const isBottom = position === "bottom";
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}
       transparent
-      animationType={isBottom ? "slide" : "fade"}
       onRequestClose={onClose}
+      animationType="none"
     >
-      <Pressable
-        onPress={onClose}
-        className={`flex-1 bg-black/80 ${isBottom ? "justify-end" : "justify-center px-6"}`}
-      >
-        <Pressable
-          onPress={(e) => e.stopPropagation()}
-          className={`bg-slate-900 border-slate-800 ${
-            isBottom 
-              ? "rounded-t-[40px] border-t p-6 pb-10" 
-              : "rounded-[32px] border p-6 w-full"
-          } ${className}`}
+      <View style={StyleSheet.absoluteFill}>
+        <Animated.View 
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(200)}
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.8)' }]}
         >
-          {(title || showClose) && (
-            <View className={`flex-row justify-between items-center ${title ? "mb-4" : "mb-2"}`}>
-                <Text className="text-xl text-white uppercase tracking-tight font-sans">
-                  {title}
-                </Text>
-              {showClose && (
-                <Pressable 
-                  onPress={onClose}
-                  className="bg-slate-800 p-2 rounded-full border border-slate-700"
-                >
-                  <Ionicons name="close" size={16} color="white" />
-                </Pressable>
-              )}
-            </View>
-          )}
+          <Pressable className="flex-1" onPress={onClose} />
+        </Animated.View>
 
-          <View>
-            {children}
-          </View>
-        </Pressable>
-      </Pressable>
+        <View className={`flex-1 ${isBottom ? "justify-end" : "justify-center px-6"}`} pointerEvents="box-none">
+          <Animated.View
+            entering={isBottom 
+              ? SlideInDown.duration(250).easing(Easing.out(Easing.quad)) 
+              : FadeIn.duration(200)}
+            exiting={isBottom 
+              ? SlideOutDown.duration(200).easing(Easing.in(Easing.quad)) 
+              : FadeOut.duration(200)}
+            className={`bg-slate-900 border-slate-800 ${
+              isBottom 
+                ? "rounded-t-[40px] border-t p-6 pb-10" 
+                : "rounded-[32px] border p-6 w-full"
+            } ${className}`}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()} pointerEvents="box-none">
+              {(title || showClose) && (
+                <View className={`flex-row justify-between items-center ${title ? "mb-4" : "mb-2"}`}>
+                    <Text className="text-xl text-white uppercase tracking-tight font-sans">
+                      {title}
+                    </Text>
+                  {showClose && (
+                    <Pressable 
+                      onPress={onClose}
+                      className="bg-slate-800 p-2 rounded-full border border-slate-700"
+                    >
+                      <Ionicons name="close" size={16} color="white" />
+                    </Pressable>
+                  )}
+                </View>
+              )}
+
+              <View>
+                {children}
+              </View>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </View>
     </Modal>
   );
 }

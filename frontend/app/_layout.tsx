@@ -3,7 +3,7 @@ import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-rout
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import Toast, { BaseToast, ErrorToast, InfoToast } from "react-native-toast-message";
-import React, { useEffect, memo } from "react";
+import React, { useEffect } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useGameStore } from "../store/useGameStore";
 import { SocketProvider, useSocket } from "../context/SocketContext";
@@ -90,7 +90,9 @@ const RootLayoutNav = () => {
         <Stack 
           screenOptions={{ 
             headerShown: false, 
-            contentStyle: { backgroundColor: "#000000" } 
+            contentStyle: { backgroundColor: "#000000" },
+            animation: 'fade_from_bottom',
+            animationDuration: 200,
           }} 
         />
         <GlobalUI />

@@ -4,6 +4,7 @@ import { Link, useRouter } from "expo-router";
 import { useState } from "react";
 import { useAuthStore } from "../../store/useAuthStore";
 import { authApi, LoginSchema } from "../../api/auth";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -48,9 +49,9 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="absolute top-[0px] left-[-50px] w-96 h-96 bg-slate-100/10 rounded-full blur-3xl opacity-30" />
+          <Animated.View entering={FadeIn.duration(800)} className="absolute top-[0px] left-[-50px] w-96 h-96 bg-slate-100/10 rounded-full blur-3xl opacity-30" />
           
-          <View className="z-10 py-10">
+          <Animated.View entering={FadeIn.delay(200).duration(400)} className="z-10 py-10">
             <Text className="text-5xl text-white text-center tracking-widest mb-2 font-pixel-bold text-shadow">
               TEXTRA
             </Text>
@@ -58,7 +59,7 @@ export default function LoginScreen() {
               The Infinite Realm
             </Text>
 
-            <View className="space-y-4">
+            <Animated.View entering={FadeIn.delay(400).duration(400)} className="space-y-4">
               <View>
                 <Text className="text-slate-400 text-[10px] mb-2 uppercase tracking-wider ml-1 font-pixel-bold">Email</Text>
                 <TextInput
@@ -93,17 +94,17 @@ export default function LoginScreen() {
                   {isLoading ? 'Entering...' : 'Enter Realm'}
                 </Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
 
-            <View className="flex-row justify-center mt-8">
+            <Animated.View entering={FadeIn.delay(600).duration(400)} className="flex-row justify-center mt-8">
               <Text className="text-slate-500 font-sans">New traveler? </Text>
               <Link href="/(auth)/register" asChild>
                 <TouchableOpacity>
                   <Text className="text-white underline font-sans">Forge an account</Text>
                 </TouchableOpacity>
               </Link>
-            </View>
-          </View>
+            </Animated.View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -11,9 +11,9 @@ class GameDataManager {
   private lastUpdate: number = 0;
   private CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  async initialize() {
+  async initialize(force = false) {
     const now = Date.now();
-    if (now - this.lastUpdate < this.CACHE_TTL && this.itemCache.size > 0) return;
+    if (!force && now - this.lastUpdate < this.CACHE_TTL && this.itemCache.size > 0) return;
 
     // Use a lock-like pattern to prevent concurrent re-initialization
     if (this.lastUpdate === -1) return; 

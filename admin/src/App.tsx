@@ -297,7 +297,12 @@ function Resources() {
                           setFormData(item);
                           setIsModalOpen(true);
                       }} className="p-2 hover:bg-accent/20 rounded-lg text-accent transition-all hover:scale-110"><Edit2 size={16} /></button>
-                      <button className="p-2 hover:bg-rose-500/20 rounded-lg text-rose-500 transition-all hover:scale-110"><Trash2 size={16} /></button>
+                      <button onClick={async () => {
+                          if (window.confirm(`Delete ${item.name}?`)) {
+                              await adminApi.deleteItem(item.code);
+                              fetchItems();
+                          }
+                      }} className="p-2 hover:bg-rose-500/20 rounded-lg text-rose-500 transition-all hover:scale-110"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -308,18 +313,26 @@ function Resources() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editItem ? 'Update Item' : 'New Item Definition'}>
-          <div className="space-y-4">
-              <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase">Item Name</label>
-                  <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input-field w-full py-2" placeholder="Ex: Iron Ore" />
-              </div>
-              {!editItem && (
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Unique Code</label>
-                      <input value={formData.code} onChange={e => setFormData({...formData, code: e.target.value.toUpperCase()})} className="input-field w-full py-2" placeholder="IRON_ORE" />
-                  </div>
-              )}
+          <div className="space-y-4 px-1">
               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Item Name</label>
+                      <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input-field w-full py-2" placeholder="Ex: Iron Ore" />
+                  </div>
+                  {!editItem ? (
+                      <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Unique Code</label>
+                          <input value={formData.code} onChange={e => setFormData({...formData, code: e.target.value.toUpperCase()})} className="input-field w-full py-2" placeholder="IRON_ORE" />
+                      </div>
+                  ) : (
+                      <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Code</label>
+                          <input value={formData.code} disabled className="input-field w-full py-2 opacity-50 cursor-not-allowed" />
+                      </div>
+                  )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase">Emoji</label>
                     <input value={formData.emoji} onChange={e => setFormData({...formData, emoji: e.target.value})} className="input-field w-full py-2" />
@@ -330,12 +343,88 @@ function Resources() {
                         {['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHICAL'].map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                 </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Level Req</label>
+                    <input type="number" value={formData.levelReq} onChange={e => setFormData({...formData, levelReq: parseInt(e.target.value)})} className="input-field w-full py-2" />
+                </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Type</label>
+                    <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="input-field w-full py-2 bg-dark-700">
+                        {['MATERIAL', 'EQUIPMENT', 'CONSUMABLE', 'CURRENCY', 'MISC'].map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                </div>
+                {formData.type === 'EQUIPMENT' && (
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase">Slot</label>
+                        <select value={formData.equipSlot || ''} onChange={e => setFormData({...formData, equipSlot: e.target.value})} className="input-field w-full py-2 bg-dark-700">
+                            <option value="">None</option>
+                            {['HEAD', 'BODY', 'LEGS', 'FEET', 'WEAPON', 'SHIELD', 'ACCESSORY'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </div>
+                )}
+              </div>
+
+              {formData.type === 'EQUIPMENT' && (
+                <>
+                    <div className="p-3 bg-dark-900/50 rounded-xl border border-dark-700 space-y-3">
+                        <h4 className="text-[10px] font-black text-accent uppercase tracking-widest">Base Stats</h4>
+                        <div className="grid grid-cols-4 gap-3">
+                            {[
+                                {label: 'ATK', key: 'statAtk'}, {label: 'DEF', key: 'statDef'},
+                                {label: 'STR', key: 'statStr'}, {label: 'AGI', key: 'statAgi'},
+                                {label: 'INT', key: 'statInt'}, {label: 'LUK', key: 'statLuk'},
+                                {label: 'DEX', key: 'statDex'}, {label: 'HEAL', key: 'statHeal'}
+                            ].map(stat => (
+                                <div key={stat.key} className="space-y-1">
+                                    <label className="text-[9px] font-bold text-gray-500 uppercase">{stat.label}</label>
+                                    <input 
+                                        type="number" 
+                                        value={formData[stat.key as keyof ItemTemplate] || 0} 
+                                        onChange={e => setFormData({...formData, [stat.key]: parseInt(e.target.value)})} 
+                                        className="input-field w-full py-1.5 text-xs" 
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/20 space-y-3">
+                        <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Roll Multipliers</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-gray-500 uppercase">Min Roll (Default 0.8)</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={formData.minRoll || 0.8} 
+                                    onChange={e => setFormData({...formData, minRoll: parseFloat(e.target.value)})} 
+                                    className="input-field w-full py-2 text-xs border-amber-500/20" 
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-gray-500 uppercase">Max Roll (Default 1.2)</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={formData.maxRoll || 1.2} 
+                                    onChange={e => setFormData({...formData, maxRoll: parseFloat(e.target.value)})} 
+                                    className="input-field w-full py-2 text-xs border-amber-500/20" 
+                                />
+                            </div>
+                        </div>
+                        <p className="text-[9px] text-gray-500 italic">Example: 0.8 to 1.2 means the final stat can be 80% to 120% of base.</p>
+                    </div>
+                </>
+              )}
+
               <div className="space-y-1">
                   <label className="text-[10px] font-bold text-gray-500 uppercase">Description</label>
-                  <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="input-field w-full py-2 h-20" />
+                  <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="input-field w-full py-2 h-20 text-sm" />
               </div>
-              <button className="btn-primary w-full py-3" onClick={handleSave}>Save Template</button>
+              <button className="btn-primary w-full py-3 mt-4" onClick={handleSave}>Save Template</button>
           </div>
       </Modal>
     </div>
@@ -344,10 +433,39 @@ function Resources() {
 
 function Players() {
   const [players, setPlayers] = useState<Character[]>([])
+  const [items, setItems] = useState<ItemTemplate[]>([])
   const [search, setSearch] = useState("")
   const [selectedPlayer, setSelectedPlayer] = useState<Character | null>(null)
   const [viewingPlayer, setViewingPlayer] = useState<Character | null>(null)
   const [editData, setEditData] = useState<Partial<Character>>({})
+  const [isSpawning, setIsSpawning] = useState(false)
+  const [spawnItemCode, setSpawnItemCode] = useState("")
+  const [spawnQty, setSpawnQty] = useState(1)
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
+
+  const toggleItemSelection = (itemId: string) => {
+    setSelectedItemIds(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId) 
+        : [...prev, itemId]
+    )
+  }
+
+  const handleBulkRemoveItems = async () => {
+    if (!viewingPlayer || selectedItemIds.length === 0) return;
+    if (!confirm(`Are you sure you want to remove ${selectedItemIds.length} selected items?`)) return;
+
+    try {
+        await adminApi.removeItems(viewingPlayer.id, selectedItemIds);
+        setSelectedItemIds([]);
+        // Refresh detail
+        const res = await adminApi.getPlayerDetail(viewingPlayer.id);
+        setViewingPlayer(res.data);
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        alert('Failed to remove items: ' + message);
+    }
+  }
 
   const fetchPlayers = async () => {
     try {
@@ -358,8 +476,20 @@ function Players() {
     }
   }
 
+  const fetchItems = async () => {
+    try {
+        const res = await adminApi.getItems()
+        setItems(res.data)
+    } catch (err) {
+        console.error('Failed to fetch items:', err)
+    }
+  }
+
   useEffect(() => {
-    const timer = setTimeout(fetchPlayers, 0)
+    const timer = setTimeout(() => {
+        fetchPlayers()
+        fetchItems()
+    }, 0)
     return () => clearTimeout(timer)
   }, [])
 
@@ -384,6 +514,39 @@ function Players() {
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         alert('Failed to update stats: ' + message)
+    }
+  }
+
+  const handleRemoveItem = async (itemId: string) => {
+    if (!viewingPlayer) return;
+    if (!confirm('Are you sure you want to remove this item?')) return;
+
+    try {
+        await adminApi.removeItem(viewingPlayer.id, itemId);
+        // Refresh detail
+        const res = await adminApi.getPlayerDetail(viewingPlayer.id);
+        setViewingPlayer(res.data);
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        alert('Failed to remove item: ' + message);
+    }
+  }
+
+  const handleSpawnItem = async () => {
+    if (!viewingPlayer || !spawnItemCode) return;
+
+    try {
+        await adminApi.spawnItem(viewingPlayer.id, spawnItemCode, spawnQty);
+        alert('Item spawned!');
+        setIsSpawning(false);
+        setSpawnItemCode("");
+        setSpawnQty(1);
+        // Refresh detail
+        const res = await adminApi.getPlayerDetail(viewingPlayer.id);
+        setViewingPlayer(res.data);
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        alert('Failed to spawn item: ' + message);
     }
   }
 
@@ -452,7 +615,7 @@ function Players() {
       </div>
 
       {/* View Player Details Modal */}
-      <Modal isOpen={!!viewingPlayer} onClose={() => setViewingPlayer(null)} title={`Character Dossier: ${viewingPlayer?.name}`}>
+      <Modal isOpen={!!viewingPlayer} onClose={() => { setViewingPlayer(null); setSelectedItemIds([]); }} title={`Character Dossier: ${viewingPlayer?.name}`}>
           <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="card bg-dark-900 shadow-inner">
@@ -469,10 +632,51 @@ function Players() {
               </div>
 
               <div>
-                <p className="text-[10px] font-black text-amber-500 uppercase mb-3 tracking-[2px]">Inventory Payload</p>
+                <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-3">
+                        <p className="text-[10px] font-black text-amber-500 uppercase tracking-[2px]">Inventory Payload</p>
+                        {selectedItemIds.length > 0 && (
+                            <button 
+                                onClick={handleBulkRemoveItems}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-rose-500 uppercase hover:text-white bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20 transition-all"
+                            >
+                                <Trash2 size={12} />
+                                Delete ({selectedItemIds.length})
+                            </button>
+                        )}
+                    </div>
+                    <button 
+                        onClick={() => setIsSpawning(true)}
+                        className="flex items-center gap-1.5 text-[10px] font-bold text-accent uppercase hover:text-white transition-colors"
+                    >
+                        <Plus size={12} />
+                        Spawn Item
+                    </button>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                     {viewingPlayer?.inventory?.map((inv: InventoryItem) => (
-                        <div key={inv.id} className="flex flex-col bg-dark-900 p-2.5 rounded-xl border border-dark-700">
+                        <div 
+                            key={inv.id} 
+                            onClick={() => toggleItemSelection(inv.id)}
+                            className={cn(
+                                "flex flex-col p-2.5 rounded-xl border relative group cursor-pointer transition-all",
+                                selectedItemIds.includes(inv.id) 
+                                    ? "bg-rose-500/5 border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.1)]" 
+                                    : "bg-dark-900 border-dark-700 hover:border-dark-500"
+                            )}
+                        >
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveItem(inv.id);
+                                }}
+                                className="absolute top-2 right-2 p-1 text-gray-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                                <Trash2 size={12} />
+                            </button>
+                            {selectedItemIds.includes(inv.id) && (
+                                <div className="absolute top-2 right-8 w-3 h-3 rounded-full bg-rose-500 border-2 border-dark-900 shadow-lg" />
+                            )}
                             <div className="flex items-center gap-3 mb-2">
                                 <span className="text-xl">{inv.template.emoji}</span>
                                 <div className="flex-1 min-w-0">
@@ -527,6 +731,47 @@ function Players() {
               <div className="pt-4 border-t border-dark-700">
                 <button className="btn-primary w-full py-3" onClick={handleSaveStats}>Commit Changes</button>
                 <p className="text-center text-[9px] text-gray-500 mt-3 uppercase tracking-widest">ID: {selectedPlayer?.id}</p>
+              </div>
+          </div>
+      </Modal>
+
+      <Modal isOpen={isSpawning} onClose={() => setIsSpawning(false)} title={`Spawn Item for ${viewingPlayer?.name}`}>
+          <div className="space-y-6">
+              <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Select Item</label>
+                  <select 
+                    value={spawnItemCode} 
+                    onChange={e => setSpawnItemCode(e.target.value)}
+                    className="input-field w-full py-2.5 text-sm"
+                  >
+                      <option value="">Choose an item...</option>
+                      {items.map(item => (
+                          <option key={item.code} value={item.code}>
+                              {item.emoji} {item.name} ({item.code})
+                          </option>
+                      ))}
+                  </select>
+              </div>
+
+              <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Quantity</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    value={spawnQty}
+                    onChange={e => setSpawnQty(parseInt(e.target.value) || 1)}
+                    className="input-field w-full py-2.5"
+                  />
+              </div>
+
+              <div className="pt-4 border-t border-dark-700">
+                  <button 
+                    onClick={handleSpawnItem}
+                    disabled={!spawnItemCode}
+                    className="btn-primary w-full py-3 disabled:opacity-50"
+                  >
+                      Manifest Item
+                  </button>
               </div>
           </div>
       </Modal>

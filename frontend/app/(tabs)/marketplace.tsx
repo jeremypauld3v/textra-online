@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, Text, Pressable, View, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { gameApi } from "../../api/game";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useGameStore } from "../../store/useGameStore";
@@ -15,6 +16,7 @@ import StandardButton from "../../components/ui/StandardButton";
 const CATEGORIES = ["ALL", "EQUIPMENT", "CONSUMABLE", "MATERIAL"];
 
 export default function MarketplaceScreen() {
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<"browse" | "mine">("browse");
   const [selectedType, setSelectedType] = useState("ALL");
   const [listings, setListings] = useState<any[]>([]);
@@ -74,7 +76,10 @@ export default function MarketplaceScreen() {
 
   return (
     <View className="flex-1 bg-[#020617]">
-      <View className="flex-1 px-6 pt-20">
+      <View 
+        className="flex-1 px-6"
+        style={{ paddingTop: Math.max(insets.top, 16) }}
+      >
         
         <ScreenHeader 
           title="Market" 
@@ -120,10 +125,10 @@ export default function MarketplaceScreen() {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchListings} tintColor="#fbbf24" />}
-          renderItem={({ item: l }) => {
+          renderItem={({ item: l, index }) => {
             const template = itemTemplates[l.itemCode];
             return (
-              <View className="mb-6 bg-slate-900/60 p-6 rounded-[32px] border border-white/5 relative overflow-hidden">
+              <Animated.View entering={FadeIn.delay(index * 20).duration(300)} className="mb-6 bg-slate-900/60 p-6 rounded-[32px] border border-white/5 relative overflow-hidden">
                 {/* 🛡️ BACKGROUND TEXTURE */}
                 <View style={{ position: 'absolute', top: 0, right: 0, width: 100, height: 100, backgroundColor: 'rgba(251, 191, 36, 0.03)', borderRadius: 50, transform: [{ scale: 1.5 }] }} />
                 
@@ -170,7 +175,7 @@ export default function MarketplaceScreen() {
                      </View>
                    )}
                 </View>
-              </View>
+              </Animated.View>
             );
           }}
           ListEmptyComponent={

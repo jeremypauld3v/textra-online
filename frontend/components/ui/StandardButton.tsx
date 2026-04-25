@@ -1,5 +1,6 @@
 import { Pressable, Text, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 export type ButtonVariant = "primary" | "success" | "danger" | "warning" | "secondary" | "outline" | "ghost";
 
@@ -24,6 +25,8 @@ export default function StandardButton({
   className = "",
   size = "md",
 }: StandardButtonProps) {
+  const scale = useSharedValue(1);
+
   const getVariantStyles = () => {
     switch (variant) {
       case "primary": return "bg-white border-white";
@@ -52,35 +55,50 @@ export default function StandardButton({
     }
   };
 
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }]
+  }));
+
+  const handlePressIn = () => {
+    scale.value = withTiming(0.96, { duration: 100 });
+  };
+
+  const handlePressOut = () => {
+    scale.value = withTiming(1, { duration: 100 });
+  };
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled || loading}
-      className={`flex-row items-center justify-center border ${getVariantStyles()} ${getSizeStyles()} ${disabled ? "opacity-40" : ""} ${className}`}
-      style={({ pressed }) => ({
-        opacity: pressed ? 0.7 : 1,
-        elevation: variant === "ghost" ? 0 : 2
-      })}
-    >
-      {loading ? (
-        <ActivityIndicator size="small" color={variant === "primary" ? "#000000" : "#FFFFFF"} />
-      ) : (
-        <>
-          {icon && (
-            <Ionicons 
-              name={icon} 
-              size={size === "sm" ? 14 : 18} 
-              color={variant === "primary" ? "#000000" : "white"} 
-              style={label ? { marginRight: 8 } : {}} 
-            />
-          )}
-          {label && (
-            <Text className={`uppercase tracking-wider font-pixel-bold ${size === "sm" ? "text-[8px]" : "text-[9px]"} ${getLabelStyles()}`}>
-              {label}
-            </Text>
-          )}
-        </>
-      )}
-    </Pressable>
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled || loading}
+        className={`flex-row items-center justify-center border ${getVariantStyles()} ${getSizeStyles()} ${disabled ? "opacity-40" : ""} ${className}`}
+        style={({ pressed }) => ({
+          elevation: variant === "ghost" ? 0 : 2
+        })}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={variant === "primary" ? "#000000" : "#FFFFFF"} />
+        ) : (
+          <>
+            {icon && (
+              <Ionicons 
+                name={icon} 
+                size={size === "sm" ? 14 : 18} 
+                color={variant === "primary" ? "#000000" : "white"} 
+                style={label ? { marginRight: 8 } : {}} 
+              />
+            )}
+            {label && (
+              <Text className={`uppercase tracking-wider font-pixel-bold ${size === "sm" ? "text-[8px]" : "text-[9px]"} ${getLabelStyles()}`}>
+                {label}
+              </Text>
+            )}
+          </>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }

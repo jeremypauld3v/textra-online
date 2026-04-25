@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { gameDataManager } from "./gameDataManager.js";
 import { equipmentService } from "./equipmentService.js";
+import { GAME_BALANCE } from "../constants/gameBalance.js";
 
 /**
  * ⚒️ ReforgeService
@@ -17,7 +18,11 @@ export class ReforgeService {
       prisma.character.findUnique({ where: { id: characterId } }),
       prisma.inventoryItem.findUnique({ 
         where: { id: inventoryItemId },
-        include: { template: true }
+        include: { 
+          template: {
+            include: { rarity: true }
+          }
+        }
       })
     ]);
 
@@ -35,7 +40,11 @@ export class ReforgeService {
 
     // 3. Generate New Rolls
     const stats = await equipmentService.getCharacterCombatStats(characterId);
-    const newRolls = this.generateRolls(stats, item.template);
+    const newRolls = equipmentService.generateEquipmentRolls(stats, item.template);
+
+    // Reforging has a slightly higher floor/ceiling (+0.05) than base template rolls
+    // We can wrap the call if we want that behavior, or just accept the standard roller.
+    // Given the user report of OP stats, staying with standard roller is safer.
 
     // 4. Update Database
     return await prisma.$transaction(async (tx) => {
@@ -58,27 +67,6 @@ export class ReforgeService {
         }
       });
     });
-  }
-
-  private generateRolls(playerStats: any, template: any) {
-    const luckBonus = (playerStats.luk * 0.005); 
-    const minMult = 0.85 + luckBonus; // Reforging has a slightly higher floor than drops
-    const maxMult = 1.25 + luckBonus;
-
-    const roll = (base: number) => {
-      if (!base || base === 0) return null;
-      const mult = Math.min(2.0, minMult + (Math.random() * (maxMult - minMult)));
-      return Math.floor(base * mult);
-    };
-
-    return {
-      rolledAtk: roll(template.statAtk),
-      rolledDef: roll(template.statDef),
-      rolledStr: roll(template.statStr),
-      rolledAgi: roll(template.statAgi),
-      rolledInt: roll(template.statInt),
-      rolledLuk: roll(template.statLuk),
-    };
   }
 }
 

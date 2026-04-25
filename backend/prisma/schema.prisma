@@ -158,6 +158,8 @@ model ItemTemplate {
   statDex        Int?               @default(0)
   statHeal       Int?               @default(0)
   statEnergy     Int?               @default(0)
+  minRoll        Float              @default(0.8)
+  maxRoll        Float              @default(1.2)
   levelReq       Int                @default(1)
   equipSlot      String?
   recipes        CraftingRecipe[]

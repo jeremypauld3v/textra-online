@@ -103,15 +103,15 @@ export async function generatePVEEncounter(character: Character) {
   const statMult = (1 + (depth / GAME_BALANCE.STAT_SCALING_DIVISOR)) * tier.dangerMult;
   const expMult = (1 + (Math.floor(depth / GAME_BALANCE.EXP_STEP_DIVISOR) * GAME_BALANCE.EXP_STEP_GROWTH)) * tier.expMult;
 
-  const scaledHp = Math.floor(monster.hp * hpMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
+  const scaledHp = Math.floor(monster.hp * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, hpMult)) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
 
   return {
     type: "PVE",
     name: tier.prefix + monster.name,
     hp: scaledHp,
     maxHp: scaledHp,
-    attack: Math.floor(monster.attack * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
-    defense: Math.floor(monster.defense * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+    attack: Math.floor(monster.attack * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, statMult)) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+    defense: Math.floor(monster.defense * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, statMult)) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
     expValue: Math.floor(monster.expReward * expMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_EXP_BONUS)
   };
 }
@@ -396,31 +396,6 @@ export async function executeGathering(character: Character, node: any) {
 }
 
 /**
- * 🎲 EQUIPMENT STAT ROLLER
- * Generates random variances for item stats.
- */
-function generateEquipmentRolls(stats: any, template: any) {
-  const luckBonus = (stats.luk * 0.005); // 100 LUK = +50% roll floor improvement
-  const minMult = 0.8 + luckBonus;
-  const maxMult = 1.2 + luckBonus;
-
-  const roll = (base: number) => {
-    if (!base) return null;
-    const mult = minMult + (Math.random() * (maxMult - minMult));
-    return Math.floor(base * mult);
-  };
-
-  return {
-    rolledAtk: roll(template.statAtk),
-    rolledDef: roll(template.statDef),
-    rolledStr: roll(template.statStr),
-    rolledAgi: roll(template.statAgi),
-    rolledInt: roll(template.statInt),
-    rolledLuk: roll(template.statLuk),
-  };
-}
-
-/**
  * 🎲 UNIVERSAL LOOT ROLLER
  * Handles depth-scaling, Rarity modifiers, and Luck bonuses.
  */
@@ -454,7 +429,7 @@ async function resolveLootRolls(character: Character, stats: any, lootTable: any
         const itemTemplate = await gameDataManager.getItem(entry.itemCode);
         let rolls = {};
         if (itemTemplate?.type === "EQUIPMENT") {
-            rolls = generateEquipmentRolls(stats, itemTemplate);
+            rolls = equipmentService.generateEquipmentRolls(stats, itemTemplate);
         }
 
         await inventoryService.addItem(character.id, entry.itemCode, finalQty, rolls);
@@ -479,7 +454,10 @@ async function resolveLootRolls(character: Character, stats: any, lootTable: any
     const mythicalItems = allItems.filter(i => i.rarityId === "MYTHICAL");
     if (mythicalItems.length > 0) {
       const drop = mythicalItems[Math.floor(Math.random() * mythicalItems.length)];
-      await inventoryService.addItem(character.id, drop.code, 1);
+      
+      const rolls = equipmentService.generateEquipmentRolls(stats, drop);
+      await inventoryService.addItem(character.id, drop.code, 1, rolls);
+      
       lootedItems.push({
         itemCode: drop.code,
         quantity: 1,

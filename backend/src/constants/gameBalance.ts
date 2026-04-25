@@ -65,6 +65,10 @@ export const GAME_BALANCE = {
   LOOT_RARITY_WEIGHT_FACTOR: 1.15, // Multiplier for Rare+ scaling
   LOOT_LUK_QUALITY_BONUS: 0.001, // Each LUK point adds 0.1% to the depth multiplier
   GLOBAL_MYTHICAL_CHANCE: 0.0001, // 0.01% base chance for surprise drops
+
+  // 🛡️ Safety Caps
+  MAX_STAT_VALUE: 2000, // Maximum value for any single rolled stat
+  MAX_SCALING_MULTIPLIER: 10.0, // Maximum monster stat multiplier from depth
 };
 
 export const BACKEND_MESSAGES = {

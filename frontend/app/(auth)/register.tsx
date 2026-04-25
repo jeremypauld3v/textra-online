@@ -4,6 +4,7 @@ import { Link, useRouter } from "expo-router";
 import { useState } from "react";
 import { useAuthStore } from "../../store/useAuthStore";
 import { authApi, RegisterSchema } from "../../api/auth";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState("");
@@ -49,9 +50,9 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="absolute bottom-[-100px] right-[-50px] w-96 h-96 bg-slate-100/10 rounded-full blur-3xl opacity-30" />
+          <Animated.View entering={FadeIn.duration(800)} className="absolute bottom-[-100px] right-[-50px] w-96 h-96 bg-slate-100/10 rounded-full blur-3xl opacity-30" />
           
-          <View className="z-10 py-10">
+          <Animated.View entering={FadeIn.delay(200).duration(400)} className="z-10 py-10">
             <Text className="text-4xl text-white mb-2 font-sans">
               Forge Legacy
             </Text>
@@ -59,7 +60,7 @@ export default function RegisterScreen() {
               Create your hero and claim your destiny.
             </Text>
 
-            <View className="space-y-4">
+            <Animated.View entering={FadeIn.delay(400).duration(400)} className="space-y-4">
               <View>
                 <Text className="text-slate-400 text-[10px] mb-2 uppercase tracking-wider ml-1 font-sans">Email</Text>
                 <TextInput
@@ -105,17 +106,17 @@ export default function RegisterScreen() {
                   {isLoading ? 'Forging...' : 'Create Hero'}
                 </Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
 
-            <View className="flex-row justify-center mt-8">
+            <Animated.View entering={FadeIn.delay(600).duration(400)} className="flex-row justify-center mt-8">
               <Text className="text-slate-500 font-sans">Already a legend? </Text>
               <Link href="/(auth)/login" asChild>
                 <TouchableOpacity>
                   <Text className="text-white underline font-sans">Sign In</Text>
                 </TouchableOpacity>
               </Link>
-            </View>
-          </View>
+            </Animated.View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

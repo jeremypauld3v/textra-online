@@ -1,10 +1,11 @@
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useEncounterStore } from "../store/useEncounterStore";
-import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, withSpring, withDelay, FadeInDown } from "react-native-reanimated";
+import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, withDelay, FadeIn } from "react-native-reanimated";
 
 // UI Components
 import ProgressBar from "../components/ui/ProgressBar";
@@ -14,6 +15,7 @@ const IDLE_SPRITE = require("../assets/sprites/beta_character_idle_side.gif");
 const ATTACK_SPRITE = require("../assets/sprites/beta_character_attack.gif");
 
 export default function EncounterScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const simBattle = useEncounterStore((s) => s.simBattle);
   const setSimBattle = useEncounterStore((s) => s.setSimBattle);
@@ -34,6 +36,7 @@ export default function EncounterScreen() {
   const isCritValue = useSharedValue(0);
   const screenShake = useSharedValue(0);
   const flashOpacity = useSharedValue(0);
+  const [dmgText, setDmgText] = useState("");
 
   const safeBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -53,6 +56,7 @@ export default function EncounterScreen() {
     const targetShake = isPlayer ? enemyShake : playerShake;
     const attackerPos = isPlayer ? playerPosX : enemyPosX;
     lastDamage.value = damage;
+    setDmgText(damage > 0 ? `-${damage}` : "MISS");
     damagePosX.value = isPlayer ? 60 : -60;
     isCritValue.value = isCrit ? 1 : 0;
     if (isPlayer) setIsPlayerAttacking(true); else setIsEnemyAttacking(true);
@@ -63,7 +67,7 @@ export default function EncounterScreen() {
     }
 
     const direction = isPlayer ? 1 : -1;
-    attackerPos.value = withSequence(withTiming(80 * direction, { duration: 200 }), withSpring(0, { damping: 15 }));
+    attackerPos.value = withSequence(withTiming(80 * direction, { duration: 200 }), withTiming(0, { duration: 200 }));
 
     setTimeout(() => {
       Haptics.impactAsync(isCrit ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
@@ -105,9 +109,27 @@ export default function EncounterScreen() {
 
   const playerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: playerPosX.value + playerShake.value }, { rotate: `${playerRotation.value}deg` }] }));
   const enemyStyle = useAnimatedStyle(() => ({ transform: [{ translateX: enemyPosX.value + enemyShake.value }] }));
+  
+  const flashStyle = useAnimatedStyle(() => ({
+    opacity: flashOpacity.value,
+  }));
+
+  const screenStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: screenShake.value }],
+  }));
+
   const damageTextStyle = useAnimatedStyle(() => ({
     opacity: damageOpacity.value,
-    transform: [{ translateY: -60 - (damageOpacity.value * 60) }, { translateX: damagePosX.value }, { scale: isCritValue.value ? 1.8 : 1.2 }]
+    transform: [
+      { translateY: -60 - (damageOpacity.value * 60) }, 
+      { translateX: damagePosX.value }, 
+      { scale: isCritValue.value ? 1.8 : 1.2 }
+    ]
+  }));
+
+  const damageTextInnerStyle = useAnimatedStyle(() => ({
+    fontSize: isCritValue.value ? 48 : 32,
+    color: isCritValue.value ? "#fbbf24" : "#f43f5e",
   }));
 
   const enemyDisplay = useMemo(() => {
@@ -120,7 +142,7 @@ export default function EncounterScreen() {
 
   return (
     <View className="flex-1 bg-[#020617]">
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: flashOpacity.value, backgroundColor: "white", zIndex: 99 }]} pointerEvents="none" />
+      <Animated.View style={[StyleSheet.absoluteFill, flashStyle, { backgroundColor: "white", zIndex: 99 }]} pointerEvents="none" />
       
       {!simBattle || !simStarted ? (
         <View className="flex-1 justify-center items-center px-12">
@@ -128,9 +150,12 @@ export default function EncounterScreen() {
            <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase tracking-[4px] mt-8">Initializing Encounter</Text>
         </View>
       ) : (
-        <Animated.View style={[{ flex: 1 }, { transform: [{ translateX: screenShake.value }] }]}>
+        <Animated.View style={[{ flex: 1 }, screenStyle]}>
           {/* ⚔️ MINIMALIST HUD */}
-          <View className="px-8 pt-12 flex-row justify-between">
+          <View 
+            style={{ paddingTop: Math.max(insets.top, 16) }}
+            className="px-8 flex-row justify-between"
+          >
              <View className="flex-1 pr-6 border-r border-white/5">
                 <Text className="text-white text-base font-pixel-bold mb-2">{Math.floor(combatSim?.playerHp ?? 0)} HP</Text>
                 <ProgressBar current={combatSim?.playerHp ?? 0} max={simBattle.startMaxPlayerHp || 1} color="rose" size="xs" hideLabel />
@@ -151,22 +176,23 @@ export default function EncounterScreen() {
             </View>
 
             <Animated.View style={damageTextStyle} className="absolute pointer-events-none items-center justify-center">
-              <Animated.Text style={{ 
-                fontSize: isCritValue.value ? 48 : 32, 
-                fontWeight: '900',
-                color: isCritValue.value ? "#fbbf24" : "#f43f5e",
-                textShadowColor: 'rgba(0, 0, 0, 0.75)',
-                textShadowOffset: {width: -1, height: 1},
-                textShadowRadius: 10
-              }}>
-                {lastDamage.value > 0 ? `-${lastDamage.value}` : 'MISS'}
+              <Animated.Text style={[
+                damageTextInnerStyle,
+                { 
+                  fontWeight: '900',
+                  textShadowColor: 'rgba(0, 0, 0, 0.75)',
+                  textShadowOffset: {width: -1, height: 1},
+                  textShadowRadius: 10
+                }
+              ]}>
+                {dmgText}
               </Animated.Text>
             </Animated.View>
           </View>
 
           {/* 📜 MINIMALIST LOG */}
-          <View className="pb-32 px-12">
-             <Animated.View key={simTurn} entering={FadeInDown}>
+          <View className="pb-16 px-12">
+             <Animated.View key={simTurn} entering={FadeIn.duration(200)}>
                 <Text className={`text-center font-pixel-bold uppercase tracking-tight ${simBattle.log.logDetails[simTurn]?.isCrit ? "text-amber-400 text-xl" : "text-white text-xs"}`}>
                   {simBattle.log.logDetails[simTurn]?.message}
                 </Text>

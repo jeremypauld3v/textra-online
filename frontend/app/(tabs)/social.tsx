@@ -1,9 +1,12 @@
 import { View, Text, TextInput, Pressable, FlatList, Platform, KeyboardAvoidingView, ActivityIndicator } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../../context/SocketContext";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useSocialStore } from "../../store/useSocialStore";
 import { gameApi } from "../../api/game";
+import Animated, { FadeIn } from "react-native-reanimated";
 import BaseModal from "../../components/ui/BaseModal";
 import StandardButton from "../../components/ui/StandardButton";
 import Toast from "react-native-toast-message";
@@ -11,13 +14,22 @@ import Toast from "react-native-toast-message";
 type ChatTab = "global" | "trade" | "whispers";
 
 export default function SocialScreen() {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<ChatTab>("global");
   const [input, setInput] = useState("");
   const [isFriendListVisible, setIsFriendListVisible] = useState(false);
   const [chatLogs, setChatLogs] = useState<any[]>([]);
   const { socket, connected, requestTrade } = useSocket();
   const characterId = useAuthStore(s => s.characterId);
+  const hasUnreadWhispers = useSocialStore(s => s.hasUnreadWhispers);
+  const setHasUnreadWhispers = useSocialStore(s => s.setHasUnreadWhispers);
   const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+     if (activeTab === "whispers") {
+        setHasUnreadWhispers(false);
+     }
+  }, [activeTab, setHasUnreadWhispers]);
 
   // Friends State
   const [friends, setFriends] = useState<any[]>([]);
@@ -65,14 +77,22 @@ export default function SocialScreen() {
         // If it's a whisper and we are in the whispers tab, refresh partners list
         if (msg.channel === "whispers") {
            fetchWhisperPartners();
+           if (activeTab === "whispers") {
+              setHasUnreadWhispers(false);
+           }
         }
-
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       };
       socket.on("chat_message", handleMessage);
       return () => { socket.off("chat_message", handleMessage); };
     }
-  }, [socket]);
+  }, [socket, activeTab, setHasUnreadWhispers]);
+
+  const showWhisperTabRedDot = useMemo(() => {
+    if (activeTab === "whispers") {
+       return whisperPartners.some(p => p.hasUnread);
+    }
+    return hasUnreadWhispers;
+  }, [activeTab, whisperPartners, hasUnreadWhispers]);
 
   useEffect(() => {
     if (activeTab === "whispers") {
@@ -84,7 +104,7 @@ export default function SocialScreen() {
                   const otherLogs = prev.filter(l => l.channel !== "whispers");
                   return [...otherLogs, ...data.messages];
                });
-               setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+               fetchWhisperPartners();
             } catch (e) {
                console.error("Failed to fetch private chat", e);
             }
@@ -185,26 +205,49 @@ export default function SocialScreen() {
     });
   }, [chatLogs, activeTab, whisperTarget, characterId]);
 
+  useEffect(() => {
+    if (filteredLogs.length > 0) {
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [filteredLogs]);
+
   const renderWhisperPartners = () => {
     return (
       <FlatList
         data={whisperPartners}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <Pressable 
-            onPress={() => setWhisperTarget({ id: item.id, name: item.name })}
-            className="flex-row items-center bg-slate-900/50 border border-white/5 p-4 rounded-2xl mb-3"
-          >
-             <View className="w-10 h-10 bg-indigo-500/20 rounded-full items-center justify-center mr-4">
-                <Ionicons name="person" size={20} color="#818cf8" />
-             </View>
-             <View className="flex-1">
-                <Text className="text-white text-sm font-pixel-bold">{item.name}</Text>
-                <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase">Level {item.level}</Text>
-             </View>
-             <Ionicons name="chevron-forward" size={16} color="#475569" />
-          </Pressable>
+        renderItem={({ item, index }) => (
+          <Animated.View entering={FadeIn.delay(index * 50).duration(300)}>
+            <Pressable 
+              onPress={() => setWhisperTarget({ id: item.id, name: item.name })}
+              className={`flex-row items-center bg-slate-900/40 p-5 rounded-[24px] border mb-3 ${item.hasUnread ? "border-amber-500/50 bg-amber-500/5" : "border-white/5"}`}
+            >
+               <View className="w-10 h-10 bg-indigo-500/20 rounded-full items-center justify-center mr-4">
+                  <Ionicons name="person" size={20} color={item.hasUnread ? "#fbbf24" : "#818cf8"} />
+                  {item.hasUnread && (
+                    <View className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-[#020617]" />
+                  )}
+               </View>
+               <View className="flex-1">
+                  <View className="flex-row items-center justify-between">
+                     <Text className={`text-sm font-pixel-bold ${item.hasUnread ? "text-amber-400" : "text-white"}`}>{item.name}</Text>
+                     {item.lastMessageAt && (
+                        <Text className="text-slate-600 text-[8px] font-pixel-bold">
+                           {new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                     )}
+                  </View>
+                  <Text className="text-slate-500 text-[10px] font-sans mt-1" numberOfLines={1}>
+                     {item.lastMessage || `Level ${item.level}`}
+                  </Text>
+               </View>
+               <Ionicons name="chevron-forward" size={16} color="#475569" className="ml-2" />
+            </Pressable>
+          </Animated.View>
         )}
         ListEmptyComponent={() => (
           <View className="items-center justify-center py-20 opacity-20">
@@ -224,15 +267,17 @@ export default function SocialScreen() {
         keyExtractor={(_, i) => i.toString()}
         showsVerticalScrollIndicator={false}
         renderItem={({ item: l }) => (
-          <Pressable onPress={() => openPlayerOptions({ id: l.senderId, name: l.senderName, userId: l.senderUserId })} className="mb-4">
-             <View className="flex-row items-center mb-1">
-                <Text className={`text-[10px] font-pixel-bold uppercase mr-2 ${l.senderId === characterId ? "text-amber-400" : "text-indigo-400"}`}>
-                   {l.senderName}
-                </Text>
-                <Text className="text-slate-700 text-[8px] font-pixel-bold">{new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-             </View>
-             <Text className="text-slate-300 text-xs font-sans leading-relaxed">{l.message}</Text>
-          </Pressable>
+          <Animated.View entering={FadeIn.duration(200)} className="mb-4">
+            <Pressable onPress={() => openPlayerOptions({ id: l.senderId, name: l.senderName, userId: l.senderUserId })}>
+               <View className="flex-row items-center mb-1">
+                  <Text className={`text-[10px] font-pixel-bold uppercase mr-2 ${l.senderId === characterId ? "text-amber-400" : "text-indigo-400"}`}>
+                     {l.senderName}
+                  </Text>
+                  <Text className="text-slate-700 text-[8px] font-pixel-bold">{new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+               </View>
+               <Text className="text-slate-300 text-xs font-sans leading-relaxed">{l.message}</Text>
+            </Pressable>
+          </Animated.View>
         )}
       />
     );
@@ -247,8 +292,11 @@ export default function SocialScreen() {
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
-        <View className="flex-1 pt-20 px-8">
-          <View className="flex-row justify-between items-end mb-10">
+        <View 
+          className="flex-1 px-8"
+          style={{ paddingTop: Math.max(insets.top, 16) }}
+        >
+          <View className="flex-row justify-between items-end mb-6">
              <View>
                 <Text className="text-white text-xl font-pixel-bold tracking-tighter">COMMUNAL</Text>
                 <View className="flex-row items-center mt-1">
@@ -262,14 +310,17 @@ export default function SocialScreen() {
              </Pressable>
           </View>
 
-          <View className="flex-row space-x-3 mb-10">
+          <View className="flex-row space-x-3 mb-6">
              {(["global", "trade", "whispers"] as ChatTab[]).map(tab => (
                <Pressable 
                  key={tab} 
                  onPress={() => setActiveTab(tab)} 
-                 className={`px-6 py-2.5 rounded-xl border-2 ${activeTab === tab ? "bg-amber-600 border-amber-400" : "bg-slate-900 border-white/5"}`}
+                 className={`px-6 py-2.5 rounded-xl border-2 relative ${activeTab === tab ? "bg-amber-600 border-amber-400" : "bg-slate-900 border-white/5"}`}
                >
                   <Text className={`text-[10px] font-pixel-bold uppercase tracking-widest ${activeTab === tab ? "text-white" : "text-slate-600"}`}>{tab}</Text>
+                  {tab === "whispers" && showWhisperTabRedDot && (
+                    <View className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-[#020617]" />
+                  )}
                </Pressable>
              ))}
           </View>
@@ -278,15 +329,7 @@ export default function SocialScreen() {
             {activeTab === "whispers" && !whisperTarget ? (
                renderWhisperPartners()
             ) : (
-               <>
-                 {activeTab === "whispers" && !whisperTarget && chatLogs.filter(l => l.channel === "whispers").length === 0 && (
-                    <View className="flex-1 items-center justify-center opacity-30">
-                       <Ionicons name="chatbubbles-outline" size={32} color="#475569" />
-                       <Text className="text-slate-500 text-[10px] font-pixel-bold uppercase mt-4">Select a friend to whisper</Text>
-                    </View>
-                 )}
-                 {renderLogs()}
-               </>
+               renderLogs()
             )}
           </View>
 
@@ -305,6 +348,7 @@ export default function SocialScreen() {
                placeholderTextColor="#334155" 
                value={input} 
                onChangeText={setInput} 
+               onFocus={() => setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200)}
                onSubmitEditing={submitChat}
                returnKeyType="send"
                editable={activeTab !== "whispers" || !!whisperTarget}

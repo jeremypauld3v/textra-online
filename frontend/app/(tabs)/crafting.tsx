@@ -1,10 +1,12 @@
 import { View, Text, Pressable, ActivityIndicator, FlatList, Alert, ScrollView } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useCallback, useMemo } from "react";
 import { useFocusEffect } from "expo-router";
 import { gameApi, InventoryItem } from "../../api/game";
 import { useGameStore } from "../../store/useGameStore";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 // UI Components
 import ScreenHeader from "../../components/ui/ScreenHeader";
@@ -13,6 +15,7 @@ import StandardButton from "../../components/ui/StandardButton";
 const CATEGORIES = ["ALL", "EQUIPMENT", "CONSUMABLE", "MATERIAL"];
 
 export default function CraftingScreen() {
+  const insets = useSafeAreaInsets();
   const [selectedType, setSelectedType] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [recipes, setRecipes] = useState<any[]>([]);
@@ -80,7 +83,10 @@ export default function CraftingScreen() {
 
   return (
     <View className="flex-1 bg-[#020617]">
-      <View className="flex-1 px-6 pt-20">
+      <View 
+        className="flex-1 px-6"
+        style={{ paddingTop: Math.max(insets.top, 16) }}
+      >
         
         <ScreenHeader 
           title="Forge" 
@@ -110,11 +116,11 @@ export default function CraftingScreen() {
           data={filteredRecipes}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          renderItem={({ item: r }) => {
+          renderItem={({ item: r, index }) => {
             const meta = itemTemplates[r.resultItemCode];
             const canCraft = r.ingredients.every((ing: any) => getOwnedQuantity(ing.itemCode) >= ing.quantity);
             return (
-              <View className="mb-4 bg-slate-900/60 p-4 rounded-2xl border border-white/5 overflow-hidden relative">
+              <Animated.View entering={FadeIn.delay(index * 20).duration(300)} className="mb-4 bg-slate-900/60 p-4 rounded-2xl border border-white/5 overflow-hidden relative">
                 <View style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, backgroundColor: canCraft ? 'rgba(16, 185, 129, 0.05)' : 'rgba(244, 63, 94, 0.02)', borderRadius: 30, transform: [{ scale: 2 }] }} />
                 
                 <View className="flex-row items-center mb-4">
@@ -150,7 +156,7 @@ export default function CraftingScreen() {
                      );
                    })}
                 </View>
-              </View>
+              </Animated.View>
             );
           }}
           ListEmptyComponent={

@@ -69,8 +69,8 @@ export class DungeonService {
 
     // Build the dungeon instance with all floors
     const depth = character.currentDepth;
-    const hpMult = (1 + (depth / GAME_BALANCE.HP_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_HP_MULT;
-    const statMult = (1 + (depth / GAME_BALANCE.STAT_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_STAT_MULT;
+    const hpMult = Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, (1 + (depth / GAME_BALANCE.HP_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_HP_MULT);
+    const statMult = Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, (1 + (depth / GAME_BALANCE.STAT_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_STAT_MULT);
     const expMult = (1 + (depth / GAME_BALANCE.EXP_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_EXP_MULT;
 
     const floors: any[] = [];
@@ -212,18 +212,24 @@ export class DungeonService {
       const lootCode = treasureItems[Math.floor(Math.random() * treasureItems.length)] as string;
       const qty = Math.floor(Math.random() * 3) + 1;
 
-      await inventoryService.addItem(characterId, lootCode, qty);
+      let lootWarning = "";
+      try {
+        await inventoryService.addItem(characterId, lootCode, qty);
+      } catch (e: any) {
+        lootWarning = ` (Loot lost: ${e.message})`;
+      }
 
       // Mark floor cleared, advance
       dungeon.floors[floorIndex].cleared = true;
       const nextIndex = floorIndex + 1;
-      const hasNext = nextIndex < dungeon.floors.length;
+      const dungeonComplete = nextIndex >= dungeon.floors.length;
 
       await prisma.character.update({
         where: { id: characterId },
         data: {
-          dungeonProgress: nextIndex,
-          dungeonData: dungeon as any,
+          dungeonProgress: dungeonComplete ? null : nextIndex,
+          dungeonData: dungeonComplete ? Prisma.DbNull : (dungeon as any),
+          actionStatus: dungeonComplete ? (character.previousStatus || "IDLE") : "IN_DUNGEON",
           hp: character.maxHp // HP reset after each room
         }
       });
@@ -232,17 +238,17 @@ export class DungeonService {
 
       return {
         type: "TREASURE",
-        loot: [{ 
+        loot: lootWarning ? [] : [{ 
           itemCode: lootCode, 
           quantity: qty,
           name: template?.name || lootCode,
           emoji: template?.emoji || "📦",
           rarityId: template?.rarityId || "COMMON"
         }],
-        nextFloor: hasNext ? dungeon.floors[nextIndex] : null,
-        floorIndex: nextIndex,
+        nextFloor: dungeonComplete ? null : dungeon.floors[nextIndex],
+        floorIndex: dungeonComplete ? null : nextIndex,
         totalFloors: dungeon.totalFloors,
-        message: `You found a treasure chest! +${qty}x ${lootCode}`
+        message: `You found a treasure chest! +${qty}x ${lootCode}${lootWarning}`
       };
     }
 
@@ -329,21 +335,31 @@ export class DungeonService {
 
     // Loot on boss kill
     const loot: any[] = [];
+    let lootWarning = "";
     if (floor.type === "BOSS" && floor.lootItemCode) {
-      await inventoryService.addItem(characterId, floor.lootItemCode, 1);
-      const template = await gameDataManager.getItem(floor.lootItemCode);
-      loot.push({ 
-        itemCode: floor.lootItemCode, 
-        quantity: 1,
-        name: template?.name || floor.lootItemCode,
-        emoji: template?.emoji || "🎁",
-        rarityId: template?.rarityId || "COMMON"
-      });
+      try {
+        const itemTemplate = await gameDataManager.getItem(floor.lootItemCode);
+        let rolls = {};
+        if (itemTemplate?.type === "EQUIPMENT") {
+          const stats = await equipmentService.getCharacterCombatStats(characterId);
+          rolls = equipmentService.generateEquipmentRolls(stats, itemTemplate);
+        }
+        await inventoryService.addItem(characterId, floor.lootItemCode, 1, rolls);
+        const template = await gameDataManager.getItem(floor.lootItemCode);
+        loot.push({ 
+          itemCode: floor.lootItemCode, 
+          quantity: 1,
+          name: template?.name || floor.lootItemCode,
+          emoji: template?.emoji || "🎁",
+          rarityId: template?.rarityId || "COMMON"
+        });
+      } catch (e: any) {
+        lootWarning = ` (Loot lost: ${e.message})`;
+      }
     }
 
     const nextMaxHp = character.maxHp + (levelGain * 10);
-    const healAmount = Math.floor(nextMaxHp * 0.2);
-    const nextHp = Math.min(nextMaxHp, playerHp + healAmount);
+    const nextHp = nextMaxHp; // HP full reset after each room (per README)
     const nextStatus = dungeonComplete ? (character.previousStatus || "IDLE") : "IN_DUNGEON";
 
     await prisma.character.update({
@@ -390,8 +406,8 @@ export class DungeonService {
       floorIndex: dungeonComplete ? null : nextIndex,
       totalFloors: dungeon.totalFloors,
       message: dungeonComplete
-        ? `You defeated ${floor.name} and conquered the dungeon!`
-        : `You defeated ${floor.name}! HP restored. Advancing to next room...`
+        ? `You defeated ${floor.name} and conquered the dungeon!${lootWarning}`
+        : `You defeated ${floor.name}! HP restored. Advancing to next room...${lootWarning}`
     };
   }
 

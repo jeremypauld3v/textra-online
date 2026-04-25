@@ -192,6 +192,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
        useSocialStore.getState().setHasFriendRequest(true);
     });
 
+    newSocket.on("chat_message", (msg: any) => {
+       if (msg.channel === "whispers") {
+          // If we are the recipient and not currently viewing this chat in SocialScreen, mark as unread
+          // Note: Since SocketContext doesn't know the current active tab easily without more state,
+          // we'll set it to true, and SocialScreen will clear it if active.
+          useSocialStore.getState().setHasUnreadWhispers(true);
+       }
+    });
+
     setSocket(newSocket);
 
     return () => {

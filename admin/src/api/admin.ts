@@ -41,6 +41,8 @@ export interface ItemTemplate {
   statDex?: number;
   statHeal?: number;
   statEnergy?: number;
+  minRoll: number;
+  maxRoll: number;
   levelReq: number;
   equipSlot?: string;
 }
@@ -173,11 +175,15 @@ export const adminApi = {
   getItems: () => client.get<ItemTemplate[]>('/admin/items'),
   createItem: (data: Partial<ItemTemplate>) => client.post<ItemTemplate>('/admin/items', data),
   updateItem: (code: string, data: Partial<ItemTemplate>) => client.put<ItemTemplate>(`/admin/items/${code}`, data),
+  deleteItem: (code: string) => client.delete(`/admin/items/${code}`),
   
   // Players
   getPlayers: () => client.get<Character[]>('/admin/players'),
   getPlayerDetail: (id: string) => client.get<Character>(`/admin/players/${id}`),
   updatePlayer: (id: string, data: Partial<Character>) => client.put<Character>(`/admin/players/${id}`, data),
+  spawnItem: (id: string, itemCode: string, quantity: number) => client.post(`/admin/players/${id}/inventory`, { itemCode, quantity }),
+  removeItem: (playerId: string, itemId: string) => client.delete(`/admin/players/${playerId}/inventory/${itemId}`),
+  removeItems: (playerId: string, itemIds: string[]) => client.delete(`/admin/players/${playerId}/inventory`, { data: { itemIds } }),
 
   // Monsters
   getMonsters: () => client.get<MonsterTemplate[]>('/admin/monsters'),

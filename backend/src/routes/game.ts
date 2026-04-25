@@ -943,23 +943,50 @@ export async function gameRoutes(server: FastifyInstance) {
   server.get("/chat/private/recent", async (request, reply) => {
     const { characterId } = request.user as { characterId: string };
     try {
-      const sent = await prisma.chatMessage.findMany({
-        where: { fromCharacterId: characterId, type: "PRIVATE" },
-        distinct: ["toCharacterId"],
-        include: { toCharacter: { select: { id: true, name: true, level: true } } },
-      });
-      const received = await prisma.chatMessage.findMany({
-        where: { toCharacterId: characterId, type: "PRIVATE" },
-        distinct: ["fromCharacterId"],
-        include: { fromCharacter: { select: { id: true, name: true, level: true } } },
+      const messages = await prisma.chatMessage.findMany({
+        where: {
+          type: "PRIVATE",
+          OR: [
+            { fromCharacterId: characterId },
+            { toCharacterId: characterId },
+          ],
+        },
+        orderBy: { timestamp: "desc" },
+        include: {
+          fromCharacter: { select: { id: true, name: true, level: true } },
+          toCharacter: { select: { id: true, name: true, level: true } },
+        },
       });
 
       const partnersMap = new Map();
-      sent.forEach((m) => partnersMap.set(m.toCharacterId, m.toCharacter));
-      received.forEach((m) => partnersMap.set(m.fromCharacterId, m.fromCharacter));
+      messages.forEach((m) => {
+        const isFromMe = m.fromCharacterId === characterId;
+        const partner = isFromMe ? m.toCharacter : m.fromCharacter;
+        const partnerId = isFromMe ? m.toCharacterId : m.fromCharacterId;
 
-      return reply.send({ partners: Array.from(partnersMap.values()) });
+        if (!partnerId || !partner) return;
+
+        if (!partnersMap.has(partnerId)) {
+          partnersMap.set(partnerId, {
+            ...partner,
+            lastMessageAt: m.timestamp,
+            lastMessage: m.content,
+            hasUnread: !isFromMe && !m.isRead,
+          });
+        } else if (!isFromMe && !m.isRead) {
+          // If we already have the partner, but this message is also unread
+          partnersMap.get(partnerId).hasUnread = true;
+        }
+      });
+
+      // Sort by lastMessageAt descending
+      const partners = Array.from(partnersMap.values()).sort(
+        (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+      );
+
+      return reply.send({ partners });
     } catch (e: any) {
+      console.error(e);
       return reply.status(500).send({ error: "Failed to fetch recent partners" });
     }
   });
@@ -968,6 +995,17 @@ export async function gameRoutes(server: FastifyInstance) {
     const { characterId } = request.user as { characterId: string };
     const { targetUserId } = request.params as { targetUserId: string };
     try {
+      // Mark as read
+      await prisma.chatMessage.updateMany({
+        where: {
+          fromCharacterId: targetUserId,
+          toCharacterId: characterId,
+          type: "PRIVATE",
+          isRead: false,
+        },
+        data: { isRead: true },
+      });
+
       const messages = await prisma.chatMessage.findMany({
         where: {
           type: "PRIVATE",

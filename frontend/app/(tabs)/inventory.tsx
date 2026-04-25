@@ -1,9 +1,10 @@
 import { View, Text, Pressable, FlatList, ActivityIndicator, RefreshControl } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useCallback, useMemo } from "react";
 import { useFocusEffect } from "expo-router";
 import { gameApi, InventoryItem } from "../../api/game";
 import Toast from "react-native-toast-message";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 import { useGameStore } from "../../store/useGameStore";
 
@@ -18,6 +19,7 @@ const TOTAL_SLOTS = 100;
 const CATEGORIES = ["ALL", "EQUIPMENT", "CONSUMABLE", "MATERIAL"];
 
 export default function InventoryScreen() {
+  const insets = useSafeAreaInsets();
   const itemTemplates = useGameStore((state) => state.items);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,12 +75,40 @@ export default function InventoryScreen() {
     if (selectedCategory !== "ALL") {
       list = list.filter((item) => itemTemplates[item.itemCode]?.type === selectedCategory);
     }
+    
     return [...list].sort((a, b) => {
+      // 1. Equipped first
       const aEq = equippedIds.includes(a.id);
       const bEq = equippedIds.includes(b.id);
       if (aEq && !bEq) return -1;
       if (!aEq && bEq) return 1;
-      return 0;
+
+      const aTemp = itemTemplates[a.itemCode];
+      const bTemp = itemTemplates[b.itemCode];
+      if (!aTemp || !bTemp) return 0;
+
+      // 2. Sort by Type
+      if (aTemp.type !== bTemp.type) {
+        return aTemp.type.localeCompare(bTemp.type);
+      }
+
+      // 3. Sort by Rarity (Descending)
+      const rarityOrder: Record<string, number> = {
+        'COMMON': 0,
+        'UNCOMMON': 1,
+        'RARE': 2,
+        'EPIC': 3,
+        'LEGENDARY': 4,
+        'MYTHIC': 5
+      };
+      const aRarity = rarityOrder[aTemp.rarity] || 0;
+      const bRarity = rarityOrder[bTemp.rarity] || 0;
+      if (aRarity !== bRarity) {
+        return bRarity - aRarity;
+      }
+
+      // 4. Sort by Name
+      return aTemp.name.localeCompare(bTemp.name);
     });
   }, [items, selectedCategory, itemTemplates, equippedIds]);
 
@@ -90,7 +120,10 @@ export default function InventoryScreen() {
 
   return (
     <View className="flex-1 bg-[#020617]">
-      <View className="flex-1 px-6 pt-20">
+      <View 
+        className="flex-1 px-6"
+        style={{ paddingTop: Math.max(insets.top, 16) }}
+      >
         
         <ScreenHeader 
           title="Vault" 
@@ -124,20 +157,21 @@ export default function InventoryScreen() {
             columnWrapperStyle={{ justifyContent: "center", gap: 10, marginBottom: 16 }}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchInventory(); }} tintColor="#fbbf24" />}
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
               if (!item) {
                 return <View className="w-[23%] aspect-square bg-slate-900/40 border border-white/5 rounded-xl" />;
               }
               const meta = itemTemplates[item.itemCode];
               return (
-                <ItemIcon 
-                  className="w-[23%] aspect-square"
-                  emoji={meta?.emoji || "📦"}
-                  isEquipped={equippedIds.includes(item.id)}
-                  quantity={item.quantity}
-                  rarity={meta?.rarityId}
-                  onPress={() => setSelectedItem(item)}
-                />
+                <Animated.View entering={FadeIn.delay(index * 10).duration(200)} className="w-[23%] aspect-square">
+                  <ItemIcon 
+                    emoji={meta?.emoji || "📦"}
+                    isEquipped={equippedIds.includes(item.id)}
+                    quantity={item.quantity}
+                    rarity={meta?.rarityId}
+                    onPress={() => setSelectedItem(item)}
+                  />
+                </Animated.View>
               );
             }}
           />

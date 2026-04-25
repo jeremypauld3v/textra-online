@@ -1,11 +1,12 @@
 import { View, Text, Pressable, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useCallback } from "react";
 import { useFocusEffect } from "expo-router";
 import { gameApi, CharacterStatus } from "../../api/game";
 import { useAuthStore } from "../../store/useAuthStore";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
-import Animated, { FadeInUp, FadeInRight } from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 // UI Components
 import ItemIcon from "../../components/ui/ItemIcon";
@@ -24,6 +25,7 @@ const STAT_INFO: { id: StatAttribute; name: string; icon: keyof typeof Ionicons.
 ];
 
 export default function CharacterScreen() {
+  const insets = useSafeAreaInsets();
   const [status, setStatus] = useState<CharacterStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAllocating, setIsAllocating] = useState(false);
@@ -94,7 +96,11 @@ export default function CharacterScreen() {
       <View style={{ position: 'absolute', bottom: -50, left: -50, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(239, 68, 68, 0.03)' }} />
       <View style={{ position: 'absolute', top: '40%', left: '20%', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(251, 191, 36, 0.02)' }} />
 
-      <ScrollView className="flex-1 px-6 pt-20" showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        className="flex-1 px-6" 
+        style={{ paddingTop: Math.max(insets.top, 16) }}
+        showsVerticalScrollIndicator={false}
+      >
         
         <ScreenHeader 
           title="Sanctum" 
@@ -107,7 +113,7 @@ export default function CharacterScreen() {
         />
 
         {/* 🏛️ HERO HEADER */}
-        <Animated.View entering={FadeInUp} className="mb-10 items-center">
+        <Animated.View entering={FadeIn.duration(300)} className="mb-10 items-center">
            <View className="w-24 h-24 bg-slate-900 rounded-full items-center justify-center border-2 border-amber-500/20 mb-4 shadow-2xl">
               <Text className="text-5xl">🧙</Text>
            </View>
@@ -196,7 +202,7 @@ export default function CharacterScreen() {
                       <View className="flex-row items-center">
                          <Text className="text-white text-2xl font-pixel-bold leading-none">{status[stat.id] as number}</Text>
                          {pendingStats[stat.id] > 0 && (
-                           <Animated.Text entering={FadeInRight} className="text-indigo-400 text-sm ml-3 font-pixel-bold">+{pendingStats[stat.id]}</Animated.Text>
+                           <Animated.Text entering={FadeIn.duration(200)} className="text-indigo-400 text-sm ml-3 font-pixel-bold">+{pendingStats[stat.id]}</Animated.Text>
                          )}
                       </View>
                    </View>
