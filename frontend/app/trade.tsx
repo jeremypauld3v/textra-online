@@ -6,7 +6,6 @@ import { useGameStore } from "../store/useGameStore";
 import { gameApi, InventoryItem, CharacterStatus } from "../api/game";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import { SafeAreaView } from "react-native-safe-area-context";
 import QuantityTradeModal from "@/components/QuantityTradeModal";
 
 // UI Components
@@ -76,6 +75,11 @@ export default function TradeScreen() {
       character.equippedChest?.id,
       character.equippedHelmet?.id,
       character.equippedBoots?.id,
+      character.equippedGloves?.id,
+      character.equippedCape?.id,
+      character.equippedNecklace?.id,
+      character.equippedRing1?.id,
+      character.equippedRing2?.id,
     ].filter(Boolean);
     return inventory.filter(item => !equippedIds.includes(item.id));
   }, [inventory, character]);
@@ -194,17 +198,18 @@ export default function TradeScreen() {
   if (!targetUserId) return null;
 
   return (
-    <SafeAreaView className="flex-1 bg-black px-6 pt-10">
-      {/* ── Header ── */}
-      <ScreenHeader
-        title="Exchange"
-        subtitle={`Session · ${targetUserId.substring(0, 8)}`}
-        rightElement={
-          <TouchableOpacity onPress={handleClose} className="bg-slate-900 p-2.5 rounded-2xl border border-slate-800">
-            <Ionicons name="close" size={24} color="white" />
-          </TouchableOpacity>
-        }
-      />
+    <View className="flex-1 bg-black">
+      <View className="flex-1 px-6 pt-20">
+        {/* ── Header ── */}
+        <ScreenHeader
+          title="Exchange"
+          subtitle={`Session · ${targetUserId.substring(0, 8)}`}
+          rightElement={
+            <TouchableOpacity onPress={handleClose} className="bg-slate-900 p-2.5 rounded-2xl border border-slate-800">
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          }
+        />
 
       {/* ── Trade Booth ── */}
       <View className="flex-row space-x-2 mb-4">
@@ -213,7 +218,7 @@ export default function TradeScreen() {
           myFinalized ? "border-emerald-500 bg-emerald-500/5" : myLocked ? "border-white bg-white/5" : "border-slate-800"
         }`}>
           <View className="flex-row justify-between items-center mb-4">
-            <Text className="text-white font-bold text-[10px] uppercase tracking-widest font-sans">Your Offer</Text>
+            <Text className="text-white text-[10px] uppercase tracking-widest font-sans">Your Offer</Text>
             {myFinalized ? (
                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
             ) : myLocked ? (
@@ -230,8 +235,8 @@ export default function TradeScreen() {
                 <TouchableOpacity onPress={() => removeItem(item.id)} className="flex-row items-center mb-2 bg-slate-900/80 p-2 rounded-xl border border-slate-800/50">
                   <Text className="text-lg mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
                   <View className="flex-1">
-                    <Text className="text-white font-bold text-[9px] uppercase font-sans" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                    <Text className="text-white font-bold text-[8px] italic font-sans">x{item.quantity}</Text>
+                    <Text className="text-white text-[9px] uppercase font-sans" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                    <Text className="text-white text-[8px] font-sans">x{item.quantity}</Text>
                   </View>
                 </TouchableOpacity>
               )}
@@ -243,7 +248,7 @@ export default function TradeScreen() {
                placeholder="Gold"
                placeholderTextColor="#334155"
                keyboardType="numeric"
-               className="flex-1 text-white font-bold text-xs text-center font-sans"
+               className="flex-1 text-white text-xs text-center font-sans"
                value={myGold > 0 ? myGold.toString() : ""}
                editable={!myLocked}
                onChangeText={v => setMyGold(parseInt(v) || 0)}
@@ -257,7 +262,7 @@ export default function TradeScreen() {
           theirFinalized ? "border-emerald-500 bg-emerald-500/5" : theirLocked ? "border-emerald-500/40 bg-emerald-500/5" : "border-slate-800"
         }`}>
           <View className="flex-row justify-between items-center mb-4">
-            <Text className="text-emerald-400 font-bold text-[10px] uppercase tracking-widest font-sans">Partner Offer</Text>
+            <Text className="text-emerald-400 text-[10px] uppercase tracking-widest font-sans">Partner Offer</Text>
             {theirFinalized ? (
                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
             ) : theirLocked ? (
@@ -277,8 +282,8 @@ export default function TradeScreen() {
                 >
                   <Text className="text-lg mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
                   <View className="flex-1">
-                    <Text className="text-white font-bold text-[9px] uppercase font-sans" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                    <Text className="text-emerald-400 font-bold text-[8px] italic font-sans">x{item.quantity}</Text>
+                    <Text className="text-white text-[9px] uppercase font-sans" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                    <Text className="text-emerald-400 text-[8px] font-sans">x{item.quantity}</Text>
                   </View>
                 </TouchableOpacity>
               )}
@@ -286,7 +291,7 @@ export default function TradeScreen() {
           </View>
           
           <View className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 items-center justify-center">
-             <Text className="text-amber-400 font-bold text-xs italic font-sans">{theirGold} Gold</Text>
+             <Text className="text-amber-400 text-xs font-sans">{theirGold} Gold</Text>
           </View>
         </View>
       </View>
@@ -294,9 +299,9 @@ export default function TradeScreen() {
       {/* ── Inventory ── */}
       <View className="flex-1 bg-slate-900/50 rounded-[40px] p-6 mb-4 border border-slate-800/50">
         <View className="flex-row justify-between items-center mb-6 px-1">
-          <Text className="text-slate-500 font-bold text-[10px] uppercase tracking-[2px] font-sans">Inventory</Text>
+          <Text className="text-slate-500 text-[10px] uppercase tracking-[2px] font-sans">Inventory</Text>
           <View className="bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
-            <Text className="text-slate-600 font-bold text-[9px] font-sans">{tradableInventory.length} Items</Text>
+            <Text className="text-slate-600 text-[9px] font-sans">{tradableInventory.length} Items</Text>
           </View>
         </View>
         
@@ -364,8 +369,8 @@ export default function TradeScreen() {
               <>
                 <View className="items-center mb-6">
                   <ItemIcon emoji={meta?.emoji || "📦"} size="lg" rarity={meta?.rarityId} className="mb-4" />
-                  <Text className="text-white font-bold text-2xl italic uppercase text-center font-sans">{meta?.name}</Text>
-                  <Text className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-1 font-sans">{meta?.type || "Standard"}</Text>
+                  <Text className="text-white text-2xl uppercase text-center font-sans">{meta?.name}</Text>
+                  <Text className="text-slate-500 text-[10px] uppercase tracking-widest mt-1 font-sans">{meta?.type || "Standard"}</Text>
                 </View>
 
                 {(detailsItem.rolledAtk || detailsItem.rolledDef || detailsItem.rolledStr || detailsItem.rolledAgi) ? (
@@ -377,7 +382,7 @@ export default function TradeScreen() {
                    </View>
                 ) : null}
 
-                <Text className="text-slate-400 text-center italic mb-10 leading-relaxed px-4 font-sans">
+                <Text className="text-slate-400 text-center mb-10 leading-relaxed px-4 font-sans">
                   &quot;{meta?.description || "A solid item found in the wild. Perfect for trading or personal use."}&quot;
                 </Text>
 
@@ -403,6 +408,7 @@ export default function TradeScreen() {
           })()
         )}
       </BaseModal>
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }

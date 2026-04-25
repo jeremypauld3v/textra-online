@@ -22,7 +22,7 @@ export default function LoginScreen() {
       const data = await authApi.login(validatedData);
       
       // 3. Success State
-      login(data.token, data.characterId, data.userId);
+      await login(data.token, data.characterId, data.userId);
       router.replace("/(tabs)/adventure");
     } catch (err: any) {
       if (err.name === "ZodError") {
@@ -51,36 +51,36 @@ export default function LoginScreen() {
           <View className="absolute top-[0px] left-[-50px] w-96 h-96 bg-slate-100/10 rounded-full blur-3xl opacity-30" />
           
           <View className="z-10 py-10">
-            <Text className="text-5xl font-bold text-white text-center tracking-widest mb-2 font-pixel-bold text-shadow">
+            <Text className="text-5xl text-white text-center tracking-widest mb-2 font-pixel-bold text-shadow">
               TEXTRA
             </Text>
-            <Text className="text-center text-slate-300 font-bold tracking-widest mb-12 uppercase text-[10px] font-sans">
+            <Text className="text-center text-slate-300 tracking-widest mb-12 uppercase text-[10px] font-sans">
               The Infinite Realm
             </Text>
 
             <View className="space-y-4">
               <View>
-                <Text className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wider ml-1 font-pixel-bold">Email</Text>
+                <Text className="text-slate-400 text-[10px] mb-2 uppercase tracking-wider ml-1 font-pixel-bold">Email</Text>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
                   placeholder="wanderer@realm.com"
                   placeholderTextColor="#475569"
-                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-bold shadow-inner font-sans"
+                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 shadow-inner font-sans"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
               </View>
 
               <View className="mt-4">
-                <Text className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wider ml-1 font-pixel-bold">Password</Text>
+                <Text className="text-slate-400 text-[10px] mb-2 uppercase tracking-wider ml-1 font-pixel-bold">Password</Text>
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
                   placeholder="••••••••"
                   placeholderTextColor="#475569"
                   secureTextEntry
-                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-bold shadow-inner font-sans"
+                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 shadow-inner font-sans"
                 />
               </View>
 
@@ -89,7 +89,7 @@ export default function LoginScreen() {
                 disabled={isLoading}
                 className={`w-full bg-white py-4 rounded-xl mt-8 shadow-lg ${isLoading ? 'opacity-50' : ''}`}
               >
-                <Text className="text-black text-center font-bold text-lg tracking-wide font-sans">
+                <Text className="text-black text-center text-lg tracking-wide font-sans">
                   {isLoading ? 'Entering...' : 'Enter Realm'}
                 </Text>
               </TouchableOpacity>
@@ -99,7 +99,7 @@ export default function LoginScreen() {
               <Text className="text-slate-500 font-sans">New traveler? </Text>
               <Link href="/(auth)/register" asChild>
                 <TouchableOpacity>
-                  <Text className="text-white font-bold underline font-sans">Forge an account</Text>
+                  <Text className="text-white underline font-sans">Forge an account</Text>
                 </TouchableOpacity>
               </Link>
             </View>

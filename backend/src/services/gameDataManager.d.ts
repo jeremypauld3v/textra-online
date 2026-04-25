@@ -12,7 +12,7 @@ declare class GameDataManager {
     getItem(code: string): Promise<any>;
     getAllItems(): Promise<any[]>;
     getMonster(name: string): Promise<any>;
-    getRandomMonster(): Promise<any>;
+    getRandomMonster(depth: number): Promise<any>;
     getResourceNodes(): Promise<({
         lootTable: ({
             item: {

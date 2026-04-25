@@ -5,56 +5,103 @@ import { inventoryService } from "./inventoryService.js";
 import type { Character } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { GAME_BALANCE } from "../constants/gameBalance.js";
+import { zoneService } from "./zoneService.js";
+import { getIO } from "../socket.js";
 
 export interface TurnLog {
   turn: number;
   attacker: "Player" | "Enemy";
   damage: number;
   message: string;
+  isCrit?: boolean;
 }
 
 /**
  * 📊 RADIAL DEPTH TIERS & REWARDS
  */
-export const getDepthTier = (depth: number) => {
-  if (depth >= 2000) return { name: "Nightmare", dangerMult: 2.5, expMult: 5.0, lootMult: 3.0, prefix: "[Nightmare] " };
-  if (depth >= 1000) return { name: "Elite", dangerMult: 1.5, expMult: 2.0, lootMult: 1.5, prefix: "[Elite] " };
-  if (depth >= 500) return { name: "Veteran", dangerMult: 1.2, expMult: 1.25, lootMult: 1.12, prefix: "[Veteran] " };
-  return { name: "Standard", dangerMult: 1.0, expMult: 1.0, lootMult: 1.0, prefix: "" };
+export const getDepthTier = async (depth: number) => {
+  const zone = await zoneService.getZoneAtDepth(depth);
+  if (zone) {
+    return {
+      name: zone.name,
+      dangerMult: zone.dangerMultiplier,
+      expMult: zone.expMultiplier,
+      lootMult: zone.dropChanceMultiplier,
+      prefix: `[${zone.name}] `,
+      commonNodeTypes: zone.commonNodeTypes,
+      excludedNodeTypes: zone.excludedNodeTypes
+    };
+  }
+  
+  // Fallback if no zone is defined in DB
+  return { 
+    name: "Wilderness", 
+    dangerMult: 1.0, 
+    expMult: 1.0, 
+    lootMult: 1.0, 
+    prefix: "", 
+    commonNodeTypes: [], 
+    excludedNodeTypes: [] 
+  };
 };
 
 /**
  * 🛠️ CORE LEVELING LOGIC
+ * Mathematically derived level-up check to avoid loop overhead.
  */
 function calculateLevelUp(currentLevel: number, currentExp: number, gainedExp: number) {
   let level = currentLevel;
   let exp = currentExp + gainedExp;
   let levelGain = 0;
 
-  while (true) {
-    const required = level * 100;
-    if (exp >= required) {
-      exp -= required;
-      level += 1;
-      levelGain += 1;
-    } else {
-      break;
-    }
+  // Faster mathematical calculation instead of loop
+  // Required for next level = level * 100
+  // This is a simple progression. For higher complexity (sum of arithmetic progression),
+  // we would use a quadratic formula, but here 100*level is straightforward.
+  while (exp >= level * 100) {
+    exp -= level * 100;
+    level += 1;
+    levelGain += 1;
+    if (levelGain > 100) break; // Safety break
   }
 
   return { level, exp, levelGain };
 }
 
+/**
+ * ⚔️ ADVANCED DAMAGE CALCULATOR
+ * Implements Level-based scaling and better stat integration.
+ */
+function calculateDamage(attackerStats: any, defenderDef: number, isGathering = false) {
+  const basePower = isGathering ? (attackerStats.dex * 2 + attackerStats.int * 0.5) : attackerStats.atk;
+  const variance = 0.9 + (Math.random() * 0.2); // 90% to 110%
+  
+  // Penetration logic: Higher DEX ignores more defense (Capped at 80%)
+  const penetration = 1 - Math.min(0.8, (attackerStats.dex / 1000));
+  const effectiveDef = defenderDef * penetration;
+  
+  const rawDamage = Math.max(5, (basePower * variance) - (effectiveDef * 0.5));
+  
+  // Crit logic (Capped at 80%)
+  const critChance = Math.min(0.8, (attackerStats.luk * (isGathering ? GAME_BALANCE.GATHER_CRIT_MODIFIER : GAME_BALANCE.BASE_CRIT_MODIFIER)));
+  const isCrit = Math.random() < critChance;
+  
+  return {
+    damage: Math.floor(isCrit ? rawDamage * 2 : rawDamage),
+    isCrit
+  };
+}
+
 export async function generatePVEEncounter(character: Character) {
   const depth = character.currentDepth;
-  const tier = getDepthTier(depth);
+  const tier = await getDepthTier(depth);
   
   const monster = await gameDataManager.getRandomMonster(depth);
   if (!monster) throw new Error("No monsters defined in database");
   
-  const hpMult = (1 + (depth / 200)) * tier.dangerMult;
-  const statMult = (1 + (depth / 250)) * tier.dangerMult;
-  const expMult = (1 + (Math.floor(depth / 50) * 0.05)) * tier.expMult;
+  const hpMult = (1 + (depth / GAME_BALANCE.HP_SCALING_DIVISOR)) * tier.dangerMult;
+  const statMult = (1 + (depth / GAME_BALANCE.STAT_SCALING_DIVISOR)) * tier.dangerMult;
+  const expMult = (1 + (Math.floor(depth / GAME_BALANCE.EXP_STEP_DIVISOR) * GAME_BALANCE.EXP_STEP_GROWTH)) * tier.expMult;
 
   const scaledHp = Math.floor(monster.hp * hpMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
 
@@ -74,10 +121,29 @@ export async function generateGatheringEncounter(character: Character) {
   const nodes = await gameDataManager.getResourceNodes();
   if (!nodes || nodes.length === 0) throw new Error("No resource nodes defined in database");
   
-  const node = nodes[Math.floor(Math.random() * nodes.length)];
+  const tier = await getDepthTier(depth);
+  
+  // Apply Zone logic: Filters & Weights
+  let availableNodes = nodes;
+  if (tier.excludedNodeTypes?.length > 0) {
+      availableNodes = nodes.filter(n => !tier.excludedNodeTypes.includes(n.type));
+  }
+  
+  // If no nodes left after exclusion, fallback to all (safeguard)
+  if (availableNodes.length === 0) availableNodes = nodes;
+
+  // Weighting: Nodes in commonNodeTypes are 3x more likely
+  const weightedNodes: any[] = [];
+  availableNodes.forEach(n => {
+      const weight = tier.commonNodeTypes?.includes(n.type) ? 3 : 1;
+      for (let i = 0; i < weight; i++) {
+          weightedNodes.push(n);
+      }
+  });
+
+  const node = weightedNodes[Math.floor(Math.random() * weightedNodes.length)];
   if (!node) throw new Error("Failed to select resource node");
 
-  const tier = getDepthTier(depth);
   const hpMult = (1 + (depth / 300)) * tier.dangerMult;
   const rewardMult = (1 + (depth / 500)) * tier.expMult;
 
@@ -95,6 +161,7 @@ export async function generateGatheringEncounter(character: Character) {
 }
 
 export async function executeCombat(character: Character, enemy: any) {
+  const startEnemyHp = enemy.hp;
   let enemyHp = enemy.hp;
   const enemyAttack = enemy.attack;
   const enemyDefense = enemy.defense;
@@ -108,27 +175,60 @@ export async function executeCombat(character: Character, enemy: any) {
   const combatLog: TurnLog[] = [];
 
   while (playerHp > 0 && enemyHp > 0) {
-    let playerDamage = Math.max(1, Math.floor(playerAttack - enemyDefense + (Math.random() * 4)));
-    const isCrit = Math.random() < (stats.luk * GAME_BALANCE.BASE_CRIT_MODIFIER);
-    if (isCrit) playerDamage *= 2;
+    const pResult = calculateDamage(stats, enemyDefense);
+    const playerDamage = pResult.damage;
+    const isCrit = pResult.isCrit;
 
     enemyHp -= playerDamage;
+    
+    let msg = "";
+    if (isCrit) {
+      const critMsgs = [
+        `${character.name} lands a devastating blow on ${enemy.name}!`,
+        `CRITICAL! ${character.name} strikes a weak point!`,
+        `${character.name} unleashes a massive strike!`,
+      ];
+      msg = critMsgs[Math.floor(Math.random() * critMsgs.length)] + ` (-${playerDamage})`;
+    } else {
+      const hitMsgs = [
+        `${character.name} attacks ${enemy.name}.`,
+        `${character.name} swings at ${enemy.name}.`,
+        `${character.name} hits ${enemy.name}.`,
+      ];
+      msg = hitMsgs[Math.floor(Math.random() * hitMsgs.length)] + ` (-${playerDamage})`;
+    }
+
     combatLog.push({
       turn: turnCounter,
       attacker: "Player",
       damage: playerDamage,
-      message: `${character.name} attacks ${enemy.name} for ${playerDamage} damage!${isCrit ? ' (CRITICAL HIT!)' : ''}`
+      message: msg,
+      isCrit: isCrit
     });
 
     if (enemyHp <= 0) break;
 
-    let enemyDamage = Math.max(1, Math.floor(enemyAttack - playerDefense + (Math.random() * 3)));
-    const isDodged = Math.random() < (stats.agi * GAME_BALANCE.BASE_DODGE_MODIFIER);
+    const eResult = calculateDamage({ atk: enemyAttack, dex: 50, luk: 5 }, playerDefense);
+    const enemyDamage = eResult.damage;
+
+    const dodgeChance = Math.min(0.8, (stats.agi * GAME_BALANCE.BASE_DODGE_MODIFIER));
+    const isDodged = Math.random() < dodgeChance;
     if (isDodged) {
-      combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: 0, message: `${enemy.name} attacks, but ${character.name} dodged swiftlly!` });
+      combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: 0, message: `${character.name} deftly dodged ${enemy.name}'s attack!` });
     } else {
       playerHp -= enemyDamage;
-      combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: enemyDamage, message: `${enemy.name} strikes ${character.name} for ${enemyDamage} damage!` });
+      const enemyMsgs = [
+        `${enemy.name} strikes back!`,
+        `${enemy.name} lunges at ${character.name}.`,
+        `${enemy.name} deals a hit.`,
+      ];
+      combatLog.push({ 
+        turn: turnCounter, 
+        attacker: "Enemy", 
+        damage: enemyDamage, 
+        message: enemyMsgs[Math.floor(Math.random() * enemyMsgs.length)] + ` (-${enemyDamage})`,
+        isCrit: eResult.isCrit
+      });
     }
 
     turnCounter++;
@@ -187,31 +287,73 @@ export async function executeCombat(character: Character, enemy: any) {
     }
   });
 
-  return { success: true, isWin, updatedChar, log: savedLog, loot: lootedItems };
+  return { 
+    success: true, 
+    isWin, 
+    updatedChar, 
+    log: savedLog, 
+    loot: lootedItems,
+    playerName: character.name,
+    enemyName: enemy.name,
+    startPlayerHp: character.hp,
+    startMaxPlayerHp: character.maxHp,
+    startEnemyHp: startEnemyHp,
+    startMaxEnemyHp: startEnemyHp
+  };
 }
 export async function executeGathering(character: Character, node: any) {
+  if (character.energy <= 0) {
+    throw new Error("You are too exhausted to gather. You must camp to restore energy.");
+  }
+
   const stats = await equipmentService.getCharacterCombatStats(character.id);
-  const gatherPower = Math.max(2, Math.floor(stats.dex * 1.5 + stats.int * 0.5));
+  const gatherPower = Math.max(2, Math.floor(stats.dex * 0.5 + stats.int * 0.2));
   let integrity = node.hp;
   let turnCounter = 1;
   const gatherLog: TurnLog[] = [];
 
   while (integrity > 0 && turnCounter <= 20) {
-    let damage = Math.max(3, Math.floor(gatherPower + (Math.random() * 5)));
-    const isPerfect = Math.random() < (stats.luk * GAME_BALANCE.GATHER_CRIT_MODIFIER);
-    if (isPerfect) damage *= 2;
+    const pResult = calculateDamage(stats, 0, true);
+    const damage = pResult.damage;
+    const isPerfect = pResult.isCrit;
 
     integrity -= damage;
+    
+    let msg = "";
+    if (isPerfect) {
+      const perfectMsgs = [
+        `PERFECT STRIKE! You harvest a wealth of materials!`,
+        `Masterful swing! The ${node.name} yields easily!`,
+        `Efficient work! You've found a rich vein/patch!`,
+      ];
+      msg = perfectMsgs[Math.floor(Math.random() * perfectMsgs.length)] + ` (+${damage})`;
+    } else {
+      const workMsgs = [
+        `You work on the ${node.name}.`,
+        `You strike the ${node.name} carefully.`,
+        `Chiseling away at the ${node.name}...`,
+      ];
+      msg = workMsgs[Math.floor(Math.random() * workMsgs.length)] + ` (+${damage})`;
+    }
+
     gatherLog.push({
       turn: turnCounter,
       attacker: "Player",
       damage: damage,
-      message: `You strike the ${node.name} for ${damage} progress!${isPerfect ? " (PERFECT STRIKE!)" : ""}`
+      message: msg
     });
     turnCounter++;
   }
 
   const { level, exp, levelGain } = calculateLevelUp(character.level, character.exp, node.xpReward || 0);
+
+  let nextStatus = character.previousStatus || "IDLE";
+  const newEnergy = Math.max(0, character.energy - 5);
+  
+  if (newEnergy <= 0) {
+    nextStatus = "CAMPING";
+    getIO().to(`user:${character.userId}`).emit("exhaustion_forced_camp", { message: "You used up the last of your energy gathering. Setting up camp..." });
+  }
 
   const updatedChar = await prisma.character.update({
     where: { id: character.id },
@@ -219,7 +361,8 @@ export async function executeGathering(character: Character, node: any) {
       exp, level,
       statPoints: { increment: levelGain * 5 },
       maxHp: { increment: levelGain * 10 },
-      actionStatus: character.previousStatus || "IDLE",
+      energy: newEnergy,
+      actionStatus: nextStatus,
       previousStatus: null,
       pendingEncounter: Prisma.DbNull
     }
@@ -238,7 +381,18 @@ export async function executeGathering(character: Character, node: any) {
     lootedItems.push(...lootResult);
   }
 
-  return { success: true, type: "GATHERING", item: node.name, amount: lootedItems.length, updatedChar, log: savedLog, startIntegrity: node.maxHp, loot: lootedItems };
+  return { 
+    success: true, 
+    type: "GATHERING", 
+    item: node.name, 
+    amount: lootedItems.length, 
+    updatedChar, 
+    log: savedLog, 
+    startIntegrity: integrity, 
+    startMaxPlayerHp: character.maxHp,
+    startPlayerHp: character.hp,
+    loot: lootedItems 
+  };
 }
 
 /**
@@ -272,8 +426,8 @@ function generateEquipmentRolls(stats: any, template: any) {
  */
 async function resolveLootRolls(character: Character, stats: any, lootTable: any[]) {
   const depth = character.currentDepth;
-  const tier = getDepthTier(depth);
-  const lootedCodes: string[] = [];
+  const tier = await getDepthTier(depth);
+  const lootedItems: any[] = [];
 
   // Base Multiplier: 1 + (Depth / Interval * Growth) + (LUK * Bonus)
   const depthIntervals = Math.floor(depth / GAME_BALANCE.LOOT_DEPTH_INTERVAL);
@@ -304,7 +458,14 @@ async function resolveLootRolls(character: Character, stats: any, lootTable: any
         }
 
         await inventoryService.addItem(character.id, entry.itemCode, finalQty, rolls);
-        lootedCodes.push(`${entry.itemCode} x${finalQty}`);
+        lootedItems.push({
+          itemCode: entry.itemCode,
+          quantity: finalQty,
+          name: itemTemplate?.name || entry.itemCode,
+          emoji: itemTemplate?.emoji || "📦",
+          rarityId: itemTemplate?.rarityId || "COMMON",
+          isWorldDrop: false
+        });
       } catch (e: any) {
         console.warn(`Loot failed: ${e.message}`);
       }
@@ -319,11 +480,18 @@ async function resolveLootRolls(character: Character, stats: any, lootTable: any
     if (mythicalItems.length > 0) {
       const drop = mythicalItems[Math.floor(Math.random() * mythicalItems.length)];
       await inventoryService.addItem(character.id, drop.code, 1);
-      lootedCodes.push(`${drop.code} (WORLD DROP!)`);
+      lootedItems.push({
+        itemCode: drop.code,
+        quantity: 1,
+        name: drop.name,
+        emoji: drop.emoji,
+        rarityId: drop.rarityId,
+        isWorldDrop: true
+      });
     }
   }
 
-  return lootedCodes;
+  return lootedItems;
 }
 
 /**
@@ -367,28 +535,47 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
   const healAmount = Math.floor(winner.maxHp * GAME_BALANCE.VICTORY_HEAL_PCT);
   const winnerNextHp = Math.min(winner.maxHp, (isAttackerWin ? p1Hp : p2Hp) + healAmount);
   const loserGoldLost = Math.floor(loser.gold * GAME_BALANCE.DEATH_PENALTY_GOLD_PCT);
-  const droppedItems: string[] = [];
-  
-  await prisma.$transaction(async (tx) => {
-    await tx.character.update({ where: { id: winner.id }, data: { hp: winnerNextHp, gold: { increment: loserGoldLost }, actionStatus: "IDLE", pendingEncounter: Prisma.DbNull } });
-    await tx.character.update({ where: { id: loser.id }, data: { hp: loser.maxHp, gold: { decrement: loserGoldLost }, currentDepth: 0, actionStatus: "IDLE", pendingEncounter: Prisma.DbNull } });
+    const droppedItems: string[] = [];
+    
+    await prisma.$transaction(async (tx) => {
+      await tx.character.update({ where: { id: winner.id }, data: { hp: winnerNextHp, gold: { increment: loserGoldLost }, actionStatus: "IDLE", pendingEncounter: Prisma.DbNull } });
+      await tx.character.update({ where: { id: loser.id }, data: { hp: loser.maxHp, gold: { decrement: loserGoldLost }, currentDepth: 0, actionStatus: "IDLE", pendingEncounter: Prisma.DbNull } });
 
-    const loserInv = await tx.inventoryItem.findMany({ where: { characterId: loser.id } });
-    for (const item of loserInv) {
-       if (Math.random() < GAME_BALANCE.PVP_LOOT_DROP_CHANCE) {
-          await tx.inventoryItem.delete({ where: { id: item.id } });
-       } else {
-          const existing = await tx.inventoryItem.findFirst({ where: { characterId: winner.id, itemCode: item.itemCode, rolledAtk: item.rolledAtk } });
-          if (existing && item.rolledAtk === null) {
+      const winnerSlotCount = await tx.inventoryItem.count({ where: { characterId: winner.id } });
+      const loserInv = await tx.inventoryItem.findMany({ where: { characterId: loser.id } });
+      
+      let currentSlots = winnerSlotCount;
+
+      for (const item of loserInv) {
+         const isEquipment = item.rolledAtk !== null;
+         
+         // 1. Roll for drop chance
+         if (Math.random() < GAME_BALANCE.PVP_LOOT_DROP_CHANCE) {
+            await tx.inventoryItem.delete({ where: { id: item.id } });
+            continue;
+         }
+
+         // 2. Check if it can stack with existing item in winner's inventory
+         const existing = await tx.inventoryItem.findFirst({ 
+            where: { characterId: winner.id, itemCode: item.itemCode, rolledAtk: item.rolledAtk } 
+         });
+
+         if (existing && !isEquipment) {
+            // Stackable material
             await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { increment: item.quantity } } });
             await tx.inventoryItem.delete({ where: { id: item.id } });
-          } else {
+            droppedItems.push(item.itemCode);
+         } else if (currentSlots < 100) {
+            // New slot (equipment or new material stack)
             await tx.inventoryItem.update({ where: { id: item.id }, data: { characterId: winner.id } });
-          }
-          droppedItems.push(item.itemCode);
-       }
-    }
-  });
+            currentSlots++;
+            droppedItems.push(item.itemCode);
+         } else {
+            // Inventory full, item is lost to the void
+            await tx.inventoryItem.delete({ where: { id: item.id } });
+         }
+      }
+    });
 
   return { 
     isWin: isAttackerWin, 

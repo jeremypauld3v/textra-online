@@ -5,10 +5,14 @@ import { gameDataManager } from "./gameDataManager.js";
  * Handles the logic for equipping and unequipping gear.
  */
 export class EquipmentService {
+    statsCache = new Map();
+    CACHE_TTL = 5000; // 5 seconds cache for stats
     /**
      * 🗡️ Equip an item from inventory to a slot
      */
     async equipItem(characterId, inventoryItemId) {
+        // Invalidate cache
+        this.statsCache.delete(characterId);
         // 1. Fetch item and character
         const invItem = await prisma.inventoryItem.findUnique({
             where: { id: inventoryItemId },
@@ -65,6 +69,8 @@ export class EquipmentService {
      * 🚶 Unequip an item from a slot
      */
     async unequipItem(characterId, slot) {
+        // Invalidate cache
+        this.statsCache.delete(characterId);
         let updateData = {};
         if (slot === "WEAPON")
             updateData = { equippedWeaponId: null };
@@ -94,6 +100,11 @@ export class EquipmentService {
      * Uses per-item rolled stats if available, otherwise falls back to template base stats.
      */
     async getCharacterCombatStats(characterId) {
+        const now = Date.now();
+        const cached = this.statsCache.get(characterId);
+        if (cached && (now - cached.timestamp < this.CACHE_TTL)) {
+            return cached.stats;
+        }
         const character = await prisma.character.findUnique({
             where: { id: characterId },
             include: {
@@ -148,7 +159,7 @@ export class EquipmentService {
             finalAtk += (totalStr * 1.5); // Unarmed penalty
         }
         const finalDef = (totalAgi * 1) + totalDef;
-        return {
+        const finalStats = {
             atk: finalAtk,
             def: finalDef,
             str: totalStr,
@@ -157,6 +168,9 @@ export class EquipmentService {
             int: totalInt,
             luk: totalLuk
         };
+        // Save to cache
+        this.statsCache.set(characterId, { stats: finalStats, timestamp: Date.now() });
+        return finalStats;
     }
 }
 export const equipmentService = new EquipmentService();

@@ -11,9 +11,13 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: "Silkscreen-Regular",
-        pixel: "Silkscreen-Regular",
-        "pixel-bold": "Silkscreen-Bold",
+        sans: "System",
+        pixel: "System",
+        "pixel-bold": "System",
+      },
+      fontWeight: {
+        bold: "700",
+        black: "900",
       },
     },
   },

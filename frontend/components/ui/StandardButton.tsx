@@ -1,4 +1,4 @@
-import { TouchableOpacity, Text, ActivityIndicator } from "react-native";
+import { Pressable, Text, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 export type ButtonVariant = "primary" | "success" | "danger" | "warning" | "secondary" | "outline" | "ghost";
@@ -26,13 +26,13 @@ export default function StandardButton({
 }: StandardButtonProps) {
   const getVariantStyles = () => {
     switch (variant) {
-      case "primary": return "bg-white border-white shadow-none";
-      case "success": return "bg-emerald-600 border-emerald-500 shadow-emerald-500/20";
-      case "danger": return "bg-rose-600 border-rose-500 shadow-rose-500/20";
-      case "warning": return "bg-amber-600 border-amber-500 shadow-amber-500/20";
-      case "secondary": return "bg-slate-800 border-slate-700 shadow-slate-900/40";
+      case "primary": return "bg-white border-white";
+      case "success": return "bg-emerald-600 border-emerald-500";
+      case "danger": return "bg-rose-600 border-rose-500";
+      case "warning": return "bg-amber-600 border-amber-500";
+      case "secondary": return "bg-slate-800 border-slate-700";
       case "outline": return "bg-transparent border-white";
-      case "ghost": return "bg-transparent border-transparent shadow-none";
+      case "ghost": return "bg-transparent border-transparent";
       default: return "bg-white border-white";
     }
   };
@@ -53,11 +53,14 @@ export default function StandardButton({
   };
 
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      activeOpacity={0.7}
-      className={`flex-row items-center justify-center border shadow-lg ${getVariantStyles()} ${getSizeStyles()} ${disabled ? "opacity-40" : ""} ${className}`}
+      className={`flex-row items-center justify-center border ${getVariantStyles()} ${getSizeStyles()} ${disabled ? "opacity-40" : ""} ${className}`}
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.7 : 1,
+        elevation: variant === "ghost" ? 0 : 2
+      })}
     >
       {loading ? (
         <ActivityIndicator size="small" color={variant === "primary" ? "#000000" : "#FFFFFF"} />
@@ -72,12 +75,12 @@ export default function StandardButton({
             />
           )}
           {label && (
-            <Text className={`font-bold uppercase tracking-wider font-pixel-bold ${size === "sm" ? "text-[8px]" : "text-[9px]"} ${getLabelStyles()}`}>
+            <Text className={`uppercase tracking-wider font-pixel-bold ${size === "sm" ? "text-[8px]" : "text-[9px]"} ${getLabelStyles()}`}>
               {label}
             </Text>
           )}
         </>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }

@@ -3,6 +3,8 @@
  * Handles the logic for equipping and unequipping gear.
  */
 export declare class EquipmentService {
+    private statsCache;
+    private CACHE_TTL;
     /**
      * 🗡️ Equip an item from inventory to a slot
      */
@@ -89,15 +91,7 @@ export declare class EquipmentService {
      * 📊 Calculate Total Stats (Base + Gear)
      * Uses per-item rolled stats if available, otherwise falls back to template base stats.
      */
-    getCharacterCombatStats(characterId: string): Promise<{
-        atk: number;
-        def: number;
-        str: number;
-        agi: number;
-        dex: number;
-        int: number;
-        luk: number;
-    }>;
+    getCharacterCombatStats(characterId: string): Promise<any>;
 }
 export declare const equipmentService: EquipmentService;
 //# sourceMappingURL=equipmentService.d.ts.map

@@ -45,7 +45,7 @@ export default function FilterButton(props: FilterButtonProps) {
           }`}
         >
           <Ionicons name="options-outline" size={18} color={isActive ? "#818cf8" : "#94a3b8"} />
-          <Text className={`font-black uppercase text-[10px] tracking-widest ml-3 ${
+          <Text className={`uppercase text-[10px] tracking-widest ml-3 ${
             isActive ? "text-white" : "text-slate-500"
           }`}>
             Filters {activeCount > 0 ? `(${activeCount})` : ""}
@@ -60,7 +60,7 @@ export default function FilterButton(props: FilterButtonProps) {
             onPress={clearFilters}
             className="ml-4"
           >
-            <Text className="text-slate-600 font-bold text-[10px] uppercase tracking-widest">Clear</Text>
+            <Text className="text-slate-600 text-[10px] uppercase tracking-widest">Clear</Text>
           </TouchableOpacity>
         )}
       </View>

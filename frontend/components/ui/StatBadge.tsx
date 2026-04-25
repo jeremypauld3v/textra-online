@@ -53,7 +53,7 @@ export default function StatBadge({
         />
       )}
       <View>
-        <Text className="font-bold text-white text-[9px] uppercase leading-tight font-sans" style={{ color: theme.color }}>
+        <Text className="text-white text-[9px] uppercase leading-tight font-sans" style={{ color: theme.color }}>
           {typeof value === 'number' && value > 0 && type !== 'gold' && type !== 'level' ? `+${value}` : value}
           {label && <Text className="text-slate-500 ml-1 font-sans"> {label}</Text>}
         </Text>

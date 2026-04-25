@@ -4,9 +4,19 @@ import { prisma } from "./lib/prisma.js";
 import { inventoryService } from "./services/inventoryService.js";
 let io;
 const onlineUsers = new Map(); // userId -> connection count
+const charCache = new Map(); // userId -> char info
 const activeTrades = new Map(); // userId -> partnerId
 const tradeStates = new Map(); // userId -> my offer half
 const pendingTradeRequests = new Map();
+let presenceTimeout = null;
+const broadcastPresence = () => {
+    if (presenceTimeout)
+        return;
+    presenceTimeout = setTimeout(() => {
+        io.emit("presence_update", { onlineUserIds: Array.from(onlineUsers.keys()) });
+        presenceTimeout = null;
+    }, 2000); // Only broadcast once every 2 seconds
+};
 export function initSocket(fastify) {
     io = new Server(fastify.server, {
         cors: {
@@ -30,60 +40,103 @@ export function initSocket(fastify) {
             next(new Error("Authentication error: Invalid token"));
         }
     });
-    io.on("connection", (socket) => {
+    io.on("connection", async (socket) => {
         const userId = socket.data.userId;
         console.log(`👤 User connected: ${userId} (${socket.id})`);
+        // Pre-fetch and cache character info
+        if (!charCache.has(userId)) {
+            const char = await prisma.character.findFirst({ where: { userId }, select: { id: true, name: true, userId: true } });
+            if (char)
+                charCache.set(userId, char);
+        }
         // Add to online users and broadcast
         const count = onlineUsers.get(userId) || 0;
         onlineUsers.set(userId, count + 1);
-        io.emit("presence_update", { onlineUserIds: Array.from(onlineUsers.keys()) });
+        broadcastPresence();
         // Join a private room for direct messages/trades
         socket.join(`user:${userId}`);
         // Global Chat
         socket.on("chat_message", async (msg) => {
-            const char = await prisma.character.findFirst({ where: { userId } });
+            const char = charCache.get(userId);
             if (!char)
                 return;
-            // Persist to DB
-            await prisma.chatMessage.create({
-                data: {
-                    type: "WORLD",
-                    content: msg,
-                    fromCharacterId: char.id
-                }
-            });
             const payload = {
                 userId,
                 characterName: char.name,
                 message: msg,
                 timestamp: new Date().toISOString()
             };
+            // 1. Emit immediately for zero-latency feel
             io.emit("chat_broadcast", payload);
+            // 2. Persist to DB in background
+            prisma.chatMessage.create({
+                data: {
+                    type: "WORLD",
+                    content: msg,
+                    fromCharacterId: char.id
+                }
+            }).catch(err => console.error("Chat persist fail:", err));
+        });
+        // Trade Chat
+        socket.on("trade_chat_message", async (msg) => {
+            const char = charCache.get(userId);
+            if (!char)
+                return;
+            const payload = {
+                userId,
+                characterName: char.name,
+                message: msg,
+                timestamp: new Date().toISOString()
+            };
+            io.emit("trade_chat_broadcast", payload);
+            prisma.chatMessage.create({
+                data: {
+                    type: "TRADE",
+                    content: msg,
+                    fromCharacterId: char.id
+                }
+            }).catch(err => console.error("Trade chat persist fail:", err));
         });
         // Private Messaging
         socket.on("private_message", async (data) => {
-            const char = await prisma.character.findFirst({ where: { userId } });
-            const targetChar = await prisma.character.findFirst({ where: { userId: data.targetUserId } });
-            if (!char || !targetChar)
+            const char = charCache.get(userId);
+            if (!char)
                 return;
-            // Persist to DB
-            await prisma.chatMessage.create({
+            let targetChar = null;
+            if (data.targetUserId) {
+                // Check cache for target if they are online
+                targetChar = charCache.get(data.targetUserId) || await prisma.character.findFirst({ where: { userId: data.targetUserId }, select: { id: true, name: true, userId: true } });
+            }
+            else if (data.targetName) {
+                targetChar = await prisma.character.findFirst({
+                    where: { name: { equals: data.targetName, mode: 'insensitive' } },
+                    select: { id: true, name: true, userId: true }
+                });
+            }
+            if (!targetChar) {
+                io.to(`user:${userId}`).emit("private_broadcast_error", { message: `Target player not found.` });
+                return;
+            }
+            const payload = {
+                fromUserId: userId,
+                fromCharacterName: char.name,
+                message: data.message,
+                timestamp: new Date().toISOString(),
+                targetUserId: targetChar.userId,
+                targetCharacterName: targetChar.name
+            };
+            // Emit immediately
+            io.to(`user:${targetChar.userId}`).emit("private_broadcast", payload);
+            io.to(`user:${userId}`).emit("private_broadcast", payload);
+            // Persist
+            prisma.chatMessage.create({
                 data: {
                     type: "PRIVATE",
                     content: data.message,
                     fromCharacterId: char.id,
                     toCharacterId: targetChar.id
                 }
-            });
-            const payload = {
-                fromUserId: userId,
-                fromCharacterName: char.name,
-                message: data.message,
-                timestamp: new Date().toISOString()
-            };
-            // Send to target and back to sender (for UI sync)
-            io.to(`user:${data.targetUserId}`).emit("private_broadcast", payload);
-            io.to(`user:${userId}`).emit("private_broadcast", payload);
+            }).catch(err => console.error("Private chat persist fail:", err));
         });
         // Trading logic
         socket.on("trade_request", async (targetUserId) => {
@@ -331,11 +384,12 @@ export function initSocket(fastify) {
             const count = onlineUsers.get(userId) || 1;
             if (count <= 1) {
                 onlineUsers.delete(userId);
+                charCache.delete(userId);
             }
             else {
                 onlineUsers.set(userId, count - 1);
             }
-            io.emit("presence_update", { onlineUserIds: Array.from(onlineUsers.keys()) });
+            broadcastPresence();
         });
     });
     return io;

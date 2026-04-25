@@ -29,8 +29,8 @@ export default function QuantityTradeModal({ visible, item, onConfirm, onCancel 
         <View className="w-16 h-16 bg-slate-950 rounded-2xl items-center justify-center border border-slate-800 mb-4">
           <Text className="text-3xl">📦</Text>
         </View>
-        <Text className="text-white text-xl font-black italic uppercase text-center">Set Quantity</Text>
-        <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Max Available: {max}</Text>
+        <Text className="text-white text-xl uppercase text-center">Set Quantity</Text>
+        <Text className="text-slate-500 text-[10px] uppercase tracking-widest mt-1">Max Available: {max}</Text>
       </View>
 
       <View className="flex-row items-center justify-between bg-black/20 p-4 rounded-3xl mb-8 border border-white/5">
@@ -42,7 +42,7 @@ export default function QuantityTradeModal({ visible, item, onConfirm, onCancel 
         />
 
         <TextInput
-          className="flex-1 text-center text-white text-3xl font-black italic"
+          className="flex-1 text-center text-white text-3xl "
           keyboardType="numeric"
           value={quantity}
           onChangeText={setQuantity}

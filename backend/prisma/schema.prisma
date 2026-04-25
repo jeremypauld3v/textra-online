@@ -6,10 +6,16 @@ datasource db {
   provider = "postgresql"
 }
 
+model GlobalConfig {
+  key   String @id
+  value Json
+}
+
 model User {
   id         String      @id @default(uuid())
   email      String      @unique
   password   String
+  isAdmin    Boolean     @default(false)
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   characters Character[]
@@ -68,6 +74,7 @@ model Friendship {
   id          String    @id @default(uuid())
   characterId String
   friendId    String
+  status      String    @default("PENDING") // PENDING | ACCEPTED
   createdAt   DateTime  @default(now())
 
   character Character @relation("CharacterFriends", fields: [characterId], references: [id])
@@ -82,6 +89,7 @@ model ChatMessage {
   content         String
   fromCharacterId String
   toCharacterId   String?  // null for WORLD
+  isRead          Boolean  @default(false)
   timestamp       DateTime @default(now())
 
   fromCharacter Character  @relation("SentMessages", fields: [fromCharacterId], references: [id])
@@ -253,4 +261,18 @@ model ResourceNodeTemplate {
   baseHp    Int         @default(20)
   xpReward  Int         @default(5)
   lootTable LootTable[]
+}
+
+model Zone {
+  id                String   @id @default(uuid())
+  name              String   @unique
+  minDepth          Int      @default(0)
+  maxDepth          Int?     // null means end of world
+  dangerMultiplier  Float    @default(1.0)
+  expMultiplier     Float    @default(1.0)
+  dropChanceMultiplier Float  @default(1.0)
+  commonNodeTypes   String[] // Weighted towards these types
+  excludedNodeTypes String[] // Never spawn these types
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

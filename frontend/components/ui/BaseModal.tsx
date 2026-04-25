@@ -1,4 +1,4 @@
-import { Modal, View, Text, TouchableOpacity } from "react-native";
+import { Modal, View, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 interface BaseModalProps {
@@ -29,34 +29,30 @@ export default function BaseModal({
       animationType={isBottom ? "slide" : "fade"}
       onRequestClose={onClose}
     >
-      <TouchableOpacity
-        activeOpacity={1}
+      <Pressable
         onPress={onClose}
         className={`flex-1 bg-black/80 ${isBottom ? "justify-end" : "justify-center px-6"}`}
       >
-        <TouchableOpacity
-          activeOpacity={1}
+        <Pressable
           onPress={(e) => e.stopPropagation()}
           className={`bg-slate-900 border-slate-800 ${
             isBottom 
               ? "rounded-t-[40px] border-t p-6 pb-10" 
-              : "rounded-[32px] border p-6 w-full shadow-2xl"
+              : "rounded-[32px] border p-6 w-full"
           } ${className}`}
         >
           {(title || showClose) && (
             <View className={`flex-row justify-between items-center ${title ? "mb-4" : "mb-2"}`}>
-              {title && (
-                <Text className="text-xl font-bold text-white italic uppercase tracking-tight font-sans">
+                <Text className="text-xl text-white uppercase tracking-tight font-sans">
                   {title}
                 </Text>
-              )}
               {showClose && (
-                <TouchableOpacity 
+                <Pressable 
                   onPress={onClose}
                   className="bg-slate-800 p-2 rounded-full border border-slate-700"
                 >
                   <Ionicons name="close" size={16} color="white" />
-                </TouchableOpacity>
+                </Pressable>
               )}
             </View>
           )}
@@ -64,8 +60,8 @@ export default function BaseModal({
           <View>
             {children}
           </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

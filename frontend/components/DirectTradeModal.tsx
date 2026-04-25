@@ -46,7 +46,9 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
   const fetchInventory = useCallback(async () => {
     try {
       const data = await gameApi.getInventory();
-      setInventory(data.inventory);
+      const equippedIds = Object.values(data.equipment).filter(Boolean);
+      const tradable = data.inventory.filter((item: any) => !equippedIds.includes(item.id));
+      setInventory(tradable);
     } catch (e) {
       console.error("Trade Modal: Failed to fetch inventory", e);
     } finally {
@@ -186,7 +188,7 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
                  {/* MY SIDE */}
                  <View className={`flex-1 p-4 rounded-[32px] border ${myLocked ? "bg-indigo-500/5 border-indigo-500/50 shadow-lg shadow-indigo-500/20" : "bg-slate-900 border-white/5"}`}>
                     <View className="flex-row justify-between items-center mb-4 px-1">
-                       <Text className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">Your Offer</Text>
+                       <Text className="text-indigo-400 text-[10px] uppercase tracking-widest">Your Offer</Text>
                        {myLocked && <Ionicons name="lock-closed" size={14} color="#6366f1" />}
                     </View>
                     <View className="h-40 bg-slate-950/50 rounded-2xl mb-4 p-2 border border-white/5">
@@ -198,8 +200,8 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
                            <TouchableOpacity onPress={() => removeItem(item.id)} className="flex-row items-center mb-2 bg-slate-900/80 p-2 rounded-xl border border-white/5">
                               <Text className="text-xl mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
                               <View className="flex-1">
-                                 <Text className="text-white text-[9px] font-bold uppercase" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                                 <Text className="text-indigo-400 text-[8px] font-black italic">Qty: {item.quantity}</Text>
+                                 <Text className="text-white text-[9px] uppercase" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                                 <Text className="text-indigo-400 text-[8px] ">Qty: {item.quantity}</Text>
                               </View>
                            </TouchableOpacity>
                          )}
@@ -210,7 +212,7 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
                          placeholder="Gold" 
                          placeholderTextColor="#334155"
                          keyboardType="numeric"
-                         className="flex-1 text-white font-black text-xs text-center"
+                         className="flex-1 text-white text-xs text-center"
                          value={myGold > 0 ? myGold.toString() : ""}
                          editable={!myLocked}
                          onChangeText={(v) => {
@@ -225,7 +227,7 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
                  {/* THEIR SIDE */}
                  <View className={`flex-1 p-4 rounded-[32px] border ${theirLocked ? "bg-emerald-500/5 border-emerald-500/50 shadow-lg shadow-emerald-500/20" : "bg-slate-900 border-white/5"}`}>
                     <View className="flex-row justify-between items-center mb-4 px-1">
-                       <Text className="text-emerald-400 font-black text-[10px] uppercase tracking-widest">Partner Offer</Text>
+                       <Text className="text-emerald-400 text-[10px] uppercase tracking-widest">Partner Offer</Text>
                        {theirLocked && <Ionicons name="shield-checkmark" size={14} color="#10b981" />}
                     </View>
                     <View className="h-40 bg-slate-950/50 rounded-2xl mb-4 p-2 border border-white/5">
@@ -237,15 +239,15 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
                            <View className="flex-row items-center mb-2 bg-slate-900/80 p-2 rounded-xl border border-white/5">
                               <Text className="text-xl mr-2">{itemTemplates[item.itemCode]?.emoji || "📦"}</Text>
                               <View className="flex-1">
-                                 <Text className="text-white text-[9px] font-bold uppercase" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
-                                 <Text className="text-emerald-400 text-[8px] font-black italic">Qty: {item.quantity}</Text>
+                                 <Text className="text-white text-[9px] uppercase" numberOfLines={1}>{itemTemplates[item.itemCode]?.name}</Text>
+                                 <Text className="text-emerald-400 text-[8px] ">Qty: {item.quantity}</Text>
                               </View>
                            </View>
                          )}
                        />
                     </View>
                     <View className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 items-center justify-center">
-                       <Text className="text-amber-400 font-black italic text-xs text-center">{theirGold} Gold</Text>
+                       <Text className="text-amber-400 text-xs text-center">{theirGold} Gold</Text>
                     </View>
                  </View>
         </View>
@@ -253,9 +255,9 @@ export default function DirectTradeModal({ visible, targetUserId, onClose }: Tra
         {/* 📦 INVENTORY SELECTOR */}
         <View className="flex-1 bg-slate-900/50 rounded-t-[48px] p-6 border-t border-white/5 shadow-2xl">
                  <View className="flex-row justify-between items-center mb-6 px-1">
-                    <Text className="text-slate-500 font-black uppercase text-[10px] tracking-widest">Vault Inventory</Text>
+                    <Text className="text-slate-500 uppercase text-[10px] tracking-widest">Vault Inventory</Text>
                     <View className="bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
-                       <Text className="text-slate-600 text-[9px] font-bold">{inventory.length} Used</Text>
+                       <Text className="text-slate-600 text-[9px] ">{inventory.length} Used</Text>
                     </View>
                  </View>
 

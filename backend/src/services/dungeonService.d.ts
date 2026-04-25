@@ -36,6 +36,17 @@ export declare class DungeonService {
      */
     fightFloor(characterId: string): Promise<{
         type: string;
+        message: string;
+        nextFloor: any;
+        loot?: never;
+        floorIndex?: never;
+        totalFloors?: never;
+        isWin?: never;
+        log?: never;
+        expGained?: never;
+        dungeonComplete?: never;
+    } | {
+        type: string;
         loot: {
             itemCode: string;
             quantity: number;
@@ -56,8 +67,8 @@ export declare class DungeonService {
             enemyName: string;
         };
         message: string;
-        loot?: never;
         nextFloor?: never;
+        loot?: never;
         floorIndex?: never;
         totalFloors?: never;
         expGained?: never;

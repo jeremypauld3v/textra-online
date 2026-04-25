@@ -62,22 +62,30 @@ export class DungeonService {
         const expMult = 1 + (depth / 150);
         const floors = [];
         for (let i = 1; i <= dungeon.floorCount; i++) {
-            // Check for treasure room before this floor
+            // 🎲 Roll for Special Room (Trap or Shrine)
+            const specialRoll = Math.random();
+            if (specialRoll < 0.15) { // 15% Trap
+                floors.push({ type: "TRAP", floor: floors.length + 1, cleared: false, name: "Spike Trap", damagePct: 0.1 });
+            }
+            else if (specialRoll < 0.25) { // 10% Shrine
+                floors.push({ type: "SHRINE", floor: floors.length + 1, cleared: false, name: "Ancient Shrine", healPct: 0.3 });
+            }
+            // 🎁 Check for treasure room before this floor
             if (i > 1 && Math.random() < dungeon.treasureChance) {
                 floors.push({ type: "TREASURE", floor: floors.length + 1, cleared: false });
             }
             // Scale mob stats by floor number + depth multiplier
-            const floorHp = Math.floor((30 + (i * 15)) * hpMult) + (character.level * 3);
+            const floorHp = Math.floor((40 + (i * 20)) * hpMult) + (character.level * 5);
             floors.push({
                 type: "MOB",
                 floor: floors.length + 1,
                 cleared: false,
-                name: `${dungeon.name} Guardian`,
+                name: `${dungeon.name} Guardian (F${i})`,
                 hp: floorHp,
                 maxHp: floorHp,
-                attack: Math.floor((5 + (i * 3)) * statMult) + Math.floor(character.level * 1.2),
-                defense: Math.floor((3 + (i * 2)) * statMult) + Math.floor(character.level * 0.8),
-                expReward: Math.floor((10 + (i * 8)) * expMult)
+                attack: Math.floor((8 + (i * 4)) * statMult) + Math.floor(character.level * 1.5),
+                defense: Math.floor((5 + (i * 3)) * statMult) + Math.floor(character.level * 1.0),
+                expReward: Math.floor((20 + (i * 12)) * expMult)
             });
         }
         // Add boss as final floor
@@ -133,6 +141,42 @@ export class DungeonService {
         const floor = dungeon.floors[floorIndex];
         if (!floor)
             throw new Error("No floor to fight");
+        // 🏺 Handle Shrine (Heal)
+        if (floor.type === "SHRINE") {
+            const healAmount = Math.floor(character.maxHp * floor.healPct);
+            const nextHp = Math.min(character.maxHp, character.hp + healAmount);
+            dungeon.floors[floorIndex].cleared = true;
+            const nextIndex = floorIndex + 1;
+            const dungeonComplete = nextIndex >= dungeon.floors.length;
+            await prisma.character.update({
+                where: { id: characterId },
+                data: {
+                    hp: nextHp,
+                    dungeonProgress: dungeonComplete ? null : nextIndex,
+                    dungeonData: dungeonComplete ? Prisma.DbNull : dungeon,
+                    actionStatus: dungeonComplete ? (character.previousStatus || "IDLE") : "IN_DUNGEON"
+                }
+            });
+            return { type: "SHRINE", message: `You prayed at the shrine. Restored ${healAmount} HP.`, nextFloor: dungeonComplete ? null : dungeon.floors[nextIndex] };
+        }
+        // 🕸️ Handle Trap (Damage)
+        if (floor.type === "TRAP") {
+            const damage = Math.floor(character.maxHp * floor.damagePct);
+            const nextHp = Math.max(1, character.hp - damage); // Trap won't kill, leaves 1hp minimum
+            dungeon.floors[floorIndex].cleared = true;
+            const nextIndex = floorIndex + 1;
+            const dungeonComplete = nextIndex >= dungeon.floors.length;
+            await prisma.character.update({
+                where: { id: characterId },
+                data: {
+                    hp: nextHp,
+                    dungeonProgress: dungeonComplete ? null : nextIndex,
+                    dungeonData: dungeonComplete ? Prisma.DbNull : dungeon,
+                    actionStatus: dungeonComplete ? (character.previousStatus || "IDLE") : "IN_DUNGEON"
+                }
+            });
+            return { type: "TRAP", message: `You triggered a spike trap! Lost ${damage} HP.`, nextFloor: dungeonComplete ? null : dungeon.floors[nextIndex] };
+        }
         // Handle treasure rooms
         if (floor.type === "TREASURE") {
             const treasureItems = ["IRON_ORE", "SILVER_ORE", "HERB", "HEALTH_POTION"];

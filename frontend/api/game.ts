@@ -31,7 +31,7 @@ export interface CharacterStatus {
   actionStatus: string;
   previousStatus?: string | null;
   pendingEncounter?: {
-    type: "PVE" | "GATHERING" | "PVP" | "DUNGEON";
+    type: "PVE" | "GATHERING" | "PVP" | "DUNGEON" | "PVP_INCOMING" | "PVP_WAITING";
     name: string;
     hp?: number;
     maxHp?: number;
@@ -136,8 +136,8 @@ export const gameApi = {
     return response.data;
   },
 
-  allocateStat: async (stat: "str" | "agi" | "dex" | "luk" | "int") => {
-    const response = await apiClient.post<{ success: boolean; character: CharacterStatus }>("/game/stats/allocate", { stat });
+  allocateStat: async (stat: "str" | "agi" | "dex" | "luk" | "int", amount: number = 1) => {
+    const response = await apiClient.post<{ success: boolean; character: CharacterStatus }>("/game/stats/allocate", { stat, amount });
     return response.data;
   },
   
@@ -198,7 +198,7 @@ export const gameApi = {
   },
   
   getFriends: async () => {
-    const response = await apiClient.get<{ friends: any[] }>("/game/friends");
+    const response = await apiClient.get<{ friends: any[], pending: any[] }>("/game/friends");
     return response.data;
   },
 
@@ -207,8 +207,33 @@ export const gameApi = {
     return response.data;
   },
 
+  acceptFriend: async (targetUserId: string) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/friends/accept", { targetUserId });
+    return response.data;
+  },
+
+  removeFriend: async (targetUserId: string) => {
+    const response = await apiClient.post<{ success: boolean; message: string }>("/game/friends/remove", { targetUserId });
+    return response.data;
+  },
+
   getWorldChatHistory: async () => {
     const response = await apiClient.get<{ messages: any[] }>("/game/chat/world");
+    return response.data;
+  },
+
+  getTradeChatHistory: async () => {
+    const response = await apiClient.get<{ messages: any[] }>("/game/chat/trade");
+    return response.data;
+  },
+
+  getRecentWhisperPartners: async () => {
+    const response = await apiClient.get<{ partners: any[] }>("/game/chat/private/recent");
+    return response.data;
+  },
+
+  clearPrivateChatHistory: async (targetUserId: string) => {
+    const response = await apiClient.post<{ success: boolean }>("/game/chat/private/clear", { targetUserId });
     return response.data;
   },
 

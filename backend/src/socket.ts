@@ -7,9 +7,19 @@ import { inventoryService } from "./services/inventoryService.js";
 
 let io: Server;
 const onlineUsers = new Map<string, number>(); // userId -> connection count
+const charCache = new Map<string, { id: string, name: string, userId: string }>(); // userId -> char info
 const activeTrades = new Map<string, string>(); // userId -> partnerId
 const tradeStates = new Map<string, { items: any[], gold: number, locked: boolean, finalized: boolean }>(); // userId -> my offer half
 const pendingTradeRequests = new Map<string, { targetUserId: string; timeout: ReturnType<typeof setTimeout> }>(); 
+
+let presenceTimeout: ReturnType<typeof setTimeout> | null = null;
+const broadcastPresence = () => {
+  if (presenceTimeout) return;
+  presenceTimeout = setTimeout(() => {
+    io.emit("presence_update", { onlineUserIds: Array.from(onlineUsers.keys()) });
+    presenceTimeout = null;
+  }, 2000); // Only broadcast once every 2 seconds
+};
 
 export function initSocket(fastify: FastifyInstance) {
   io = new Server(fastify.server, {
@@ -36,66 +46,79 @@ export function initSocket(fastify: FastifyInstance) {
     }
   });
 
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
     const userId = socket.data.userId;
     console.log(`👤 User connected: ${userId} (${socket.id})`);
+
+    // Pre-fetch and cache character info
+    if (!charCache.has(userId)) {
+      const char = await prisma.character.findFirst({ where: { userId }, select: { id: true, name: true, userId: true } });
+      if (char) charCache.set(userId, char as any);
+    }
 
     // Add to online users and broadcast
     const count = onlineUsers.get(userId) || 0;
     onlineUsers.set(userId, count + 1);
-    io.emit("presence_update", { onlineUserIds: Array.from(onlineUsers.keys()) });
+    broadcastPresence();
 
     // Join a private room for direct messages/trades
     socket.join(`user:${userId}`);
 
-    // Global Chat
-    socket.on("chat_message", async (msg: string) => {
-       const char = await prisma.character.findFirst({ where: { userId } });
+    // Unified Chat Handler
+    socket.on("chat_message", async (data: any) => {
+       const char = charCache.get(userId);
        if (!char) return;
 
-       // Persist to DB
-       await (prisma as any).chatMessage.create({
-          data: {
-             type: "WORLD",
-             content: msg,
-             fromCharacterId: char.id
-          }
-       });
+       // Handle both legacy string and new object format
+       const isObject = typeof data === 'object' && data !== null;
+       const message = isObject ? data.message : data;
+       const channel = isObject ? (data.channel || "global") : "global";
+       const targetCharacterId = isObject ? data.targetUserId : null;
 
-       const payload = {
-          userId,
-          characterName: char.name,
-          message: msg,
-          timestamp: new Date().toISOString()
+       if (!message || message.trim() === "") return;
+
+       const payload: any = {
+          senderId: char.id,
+          senderName: char.name,
+          senderUserId: char.userId,
+          message: message,
+          createdAt: new Date().toISOString(),
+          channel: channel === "whispers" ? "whispers" : (channel === "trade" ? "trade" : "global")
        };
-       io.emit("chat_broadcast", payload);
-    });
 
-    // Private Messaging
-    socket.on("private_message", async (data: { targetUserId: string, message: string }) => {
-       const char = await prisma.character.findFirst({ where: { userId } });
-       const targetChar = await prisma.character.findFirst({ where: { userId: data.targetUserId } });
-       if (!char || !targetChar) return;
+       if (channel === "whispers" && targetCharacterId) {
+          const targetChar = await prisma.character.findUnique({ 
+             where: { id: targetCharacterId },
+             select: { id: true, name: true, userId: true }
+          });
+          if (!targetChar) return;
 
-       // Persist to DB
-       await (prisma as any).chatMessage.create({
-          data: {
-             type: "PRIVATE",
-             content: data.message,
-             fromCharacterId: char.id,
-             toCharacterId: targetChar.id
-          }
-       });
+          payload.targetId = targetChar.id;
+          payload.targetName = targetChar.name;
 
-       const payload = {
-          fromUserId: userId,
-          fromCharacterName: char.name,
-          message: data.message,
-          timestamp: new Date().toISOString()
-       };
-       // Send to target and back to sender (for UI sync)
-       io.to(`user:${data.targetUserId}`).emit("private_broadcast", payload);
-       io.to(`user:${userId}`).emit("private_broadcast", payload);
+          io.to(`user:${userId}`).emit("chat_message", payload);
+          io.to(`user:${targetChar.userId}`).emit("chat_message", payload);
+
+          prisma.chatMessage.create({
+             data: {
+                type: "PRIVATE",
+                content: message,
+                fromCharacterId: char.id,
+                toCharacterId: targetChar.id
+             }
+          }).catch(err => console.error("Private chat persist fail:", err));
+       } else {
+          // World or Trade
+          io.emit("chat_message", payload);
+
+          prisma.chatMessage.create({
+             data: {
+                type: channel === "trade" ? "TRADE" : "WORLD",
+                content: message,
+                fromCharacterId: char.id
+             }
+          }).catch(err => console.error("Chat persist fail:", err));
+       }
     });
 
     // Trading logic
@@ -378,10 +401,11 @@ export function initSocket(fastify: FastifyInstance) {
       const count = onlineUsers.get(userId) || 1;
       if (count <= 1) {
         onlineUsers.delete(userId);
+        charCache.delete(userId);
       } else {
         onlineUsers.set(userId, count - 1);
       }
-      io.emit("presence_update", { onlineUserIds: Array.from(onlineUsers.keys()) });
+      broadcastPresence();
     });
   });
 

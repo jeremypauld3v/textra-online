@@ -176,18 +176,20 @@ export async function gameRoutes(server) {
                     friend: true,
                 },
             });
-            // Map to a clean list of friends (the other person in the relation)
-            const friends = friendships.map((f) => {
+            const friends = friendships
+                .filter((f) => f.status === "ACCEPTED")
+                .map((f) => {
                 const isMeInitiator = f.characterId === characterId;
                 const other = isMeInitiator ? f.friend : f.character;
-                return {
-                    id: other.id,
-                    userId: other.userId,
-                    name: other.name,
-                    level: other.level,
-                };
+                return { id: other.id, userId: other.userId, name: other.name, level: other.level };
             });
-            return reply.send({ friends });
+            // Pending requests are only those where we are the TARGET (friendId)
+            const pending = friendships
+                .filter((f) => f.status === "PENDING" && f.friendId === characterId)
+                .map((f) => {
+                return { id: f.character.id, userId: f.character.userId, name: f.character.name, level: f.character.level };
+            });
+            return reply.send({ friends, pending });
         }
         catch (err) {
             server.log.error(err);
@@ -218,6 +220,74 @@ export async function gameRoutes(server) {
             return reply.status(500).send({ error: "Failed to fetch world chat history" });
         }
     });
+    // GET /api/game/chat/private/recent
+    server.get("/chat/private/recent", async (request, reply) => {
+        const { characterId } = request.user;
+        try {
+            // Find all unique partners we've exchanged messages with
+            const messages = await prisma.chatMessage.findMany({
+                where: {
+                    type: "PRIVATE",
+                    OR: [
+                        { fromCharacterId: characterId },
+                        { toCharacterId: characterId },
+                    ]
+                },
+                orderBy: { timestamp: "desc" },
+                include: { fromCharacter: true, toCharacter: true }
+            });
+            const partnersMap = new Map();
+            for (const m of messages) {
+                const isFromMe = m.fromCharacterId === characterId;
+                const partner = isFromMe ? m.toCharacter : m.fromCharacter;
+                if (!partner)
+                    continue;
+                if (!partnersMap.has(partner.id)) {
+                    partnersMap.set(partner.id, {
+                        userId: partner.userId,
+                        name: partner.name,
+                        lastMessage: m.content,
+                        timestamp: m.timestamp.toISOString(),
+                        unreadCount: 0
+                    });
+                }
+                // Count unread messages (from partner to me)
+                if (!isFromMe && m.toCharacterId === characterId && !m.isRead) {
+                    const entry = partnersMap.get(partner.id);
+                    entry.unreadCount++;
+                }
+            }
+            return reply.send({ partners: Array.from(partnersMap.values()) });
+        }
+        catch (err) {
+            server.log.error(err);
+            return reply.status(500).send({ error: "Failed to fetch recent partners" });
+        }
+    });
+    // POST /api/game/chat/private/clear
+    server.post("/chat/private/clear", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetUserId } = request.body;
+        try {
+            const targetChar = await prisma.character.findFirst({ where: { userId: targetUserId } });
+            if (!targetChar)
+                return reply.status(404).send({ error: "Target player not found" });
+            await prisma.chatMessage.deleteMany({
+                where: {
+                    type: "PRIVATE",
+                    OR: [
+                        { fromCharacterId: characterId, toCharacterId: targetChar.id },
+                        { fromCharacterId: targetChar.id, toCharacterId: characterId },
+                    ]
+                }
+            });
+            return reply.send({ success: true });
+        }
+        catch (err) {
+            server.log.error(err);
+            return reply.status(500).send({ error: "Failed to clear history" });
+        }
+    });
     // GET /api/game/chat/private/:targetUserId
     server.get("/chat/private/:targetUserId", async (request, reply) => {
         const { characterId } = request.user;
@@ -226,6 +296,16 @@ export async function gameRoutes(server) {
             const targetChar = await prisma.character.findFirst({ where: { userId: targetUserId } });
             if (!targetChar)
                 return reply.status(404).send({ error: "Target player not found" });
+            // Mark messages from target to me as READ
+            await prisma.chatMessage.updateMany({
+                where: {
+                    type: "PRIVATE",
+                    fromCharacterId: targetChar.id,
+                    toCharacterId: characterId,
+                    isRead: false
+                },
+                data: { isRead: true }
+            });
             const messages = await prisma.chatMessage.findMany({
                 where: {
                     type: "PRIVATE",
@@ -265,6 +345,7 @@ export async function gameRoutes(server) {
                 return reply.status(404).send({ error: "Player not found" });
             if (targetChar.id === characterId)
                 return reply.status(400).send({ error: "Cannot add yourself" });
+            const char = await prisma.character.findUnique({ where: { id: characterId } });
             // Check existing
             const existing = await prisma.friendship.findFirst({
                 where: {
@@ -274,19 +355,103 @@ export async function gameRoutes(server) {
                     ],
                 },
             });
-            if (existing)
-                return reply.status(400).send({ error: "Already friends" });
+            if (existing) {
+                if (existing.status === "ACCEPTED")
+                    return reply.status(400).send({ error: "Already friends" });
+                if (existing.status === "PENDING") {
+                    if (existing.friendId === characterId) {
+                        // They already sent US a request. Let's just auto-accept it!
+                        await prisma.friendship.update({ where: { id: existing.id }, data: { status: "ACCEPTED" } });
+                        const io = getIO();
+                        io.to(`user:${targetChar.userId}`).emit("friend_request_accepted", { friendName: char?.name, friendUserId: char?.userId });
+                        return reply.send({ success: true, message: "Friend request auto-accepted!" });
+                    }
+                    else {
+                        return reply.status(400).send({ error: "Friend request already pending" });
+                    }
+                }
+            }
             await prisma.friendship.create({
                 data: {
                     characterId,
                     friendId: targetChar.id,
+                    status: "PENDING"
                 },
             });
-            return reply.send({ success: true, message: "Friend added!" });
+            const io = getIO();
+            if (char) {
+                io.to(`user:${targetChar.userId}`).emit("friend_request_received", {
+                    fromName: char.name,
+                    fromUserId: char.userId
+                });
+            }
+            return reply.send({ success: true, message: "Friend request sent!" });
         }
         catch (err) {
             server.log.error(err);
             return reply.status(500).send({ error: "Failed to add friend" });
+        }
+    });
+    // POST /api/game/friends/accept
+    server.post("/friends/accept", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetUserId } = request.body;
+        if (!targetUserId)
+            return reply.status(400).send({ error: "Target required" });
+        try {
+            const targetChar = await prisma.character.findFirst({
+                where: { userId: targetUserId },
+            });
+            if (!targetChar)
+                return reply.status(404).send({ error: "Player not found" });
+            const existing = await prisma.friendship.findFirst({
+                where: { characterId: targetChar.id, friendId: characterId, status: "PENDING" }
+            });
+            if (!existing)
+                return reply.status(404).send({ error: "No pending request from this player" });
+            await prisma.friendship.update({
+                where: { id: existing.id },
+                data: { status: "ACCEPTED" }
+            });
+            const char = await prisma.character.findUnique({ where: { id: characterId } });
+            const io = getIO();
+            io.to(`user:${targetChar.userId}`).emit("friend_request_accepted", {
+                friendName: char?.name,
+                friendUserId: char?.userId
+            });
+            return reply.send({ success: true, message: "Friend request accepted." });
+        }
+        catch (err) {
+            server.log.error(err);
+            return reply.status(500).send({ error: "Failed to accept friend request" });
+        }
+    });
+    // POST /api/game/friends/remove
+    server.post("/friends/remove", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetUserId } = request.body;
+        if (!targetUserId)
+            return reply.status(400).send({ error: "Target required" });
+        try {
+            const targetChar = await prisma.character.findFirst({
+                where: { userId: targetUserId },
+            });
+            if (!targetChar)
+                return reply.status(404).send({ error: "Player not found" });
+            // Delete friendship in either direction
+            await prisma.friendship.deleteMany({
+                where: {
+                    OR: [
+                        { characterId, friendId: targetChar.id },
+                        { characterId: targetChar.id, friendId: characterId },
+                    ],
+                },
+            });
+            return reply.send({ success: true, message: "Friend removed." });
+        }
+        catch (err) {
+            server.log.error(err);
+            return reply.status(500).send({ error: "Failed to remove friend" });
         }
     });
     // POST /api/game/travel

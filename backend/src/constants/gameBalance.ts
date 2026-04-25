@@ -6,7 +6,7 @@
 export const GAME_BALANCE = {
   // 🕒 Time Intervals (in seconds)
   ENCOUNTER_INTERVAL: 10,
-   rozhod_decisions_countdown: 30, // decision required time
+  DECISION_COUNTDOWN_SECONDS: 30, // decision required time
 
   // 🗺️ Travel
   SAFE_ZONE_LIMIT: 200,
@@ -22,13 +22,20 @@ export const GAME_BALANCE = {
   GATHERING_CHANCE_DANGER: 0.3,
 
   // ⚔️ Combat Mechanics (scaling and logic)
-  BASE_CRIT_MODIFIER: 0.02,
-  BASE_DODGE_MODIFIER: 0.015,
-  GATHER_CRIT_MODIFIER: 0.03,
+  BASE_CRIT_MODIFIER: 0.002,
+  BASE_DODGE_MODIFIER: 0.0015,
+  GATHER_CRIT_MODIFIER: 0.003,
   VICTORY_HEAL_PCT: 0.2, // restore 20% HP after win
-  PVP_CRIT_MODIFIER: 0.02,
+  PVP_CRIT_MODIFIER: 0.002,
   PVP_FLEE_CHANCE_CAP: 0.8,
-  PVP_FLEE_AGI_DIVISOR: 20,
+  PVP_FLEE_AGI_DIVISOR: 200,
+
+  // 📈 Scaling Factors (Per Depth)
+  HP_SCALING_DIVISOR: 200,
+  STAT_SCALING_DIVISOR: 250,
+  EXP_SCALING_DIVISOR: 150, // for dungeons
+  EXP_STEP_DIVISOR: 50,      // for monsters
+  EXP_STEP_GROWTH: 0.05,     // for monsters
 
   // 💰 Economy & Death
   DEATH_PENALTY_GOLD_PCT: 0.1, // lose 10% gold on PVP death
@@ -41,13 +48,22 @@ export const GAME_BALANCE = {
   DUNGEON_HP_MULT: 1.0,
   DUNGEON_STAT_MULT: 1.0,
   DUNGEON_EXP_MULT: 1.0,
+  DUNGEON_TRAP_CHANCE: 0.15,
+  DUNGEON_SHRINE_CHANCE: 0.1,
+  DUNGEON_SHRINE_HEAL_PCT: 0.3,
+  DUNGEON_TRAP_DAMAGE_PCT: 0.1,
+
+  // 🛰️ Matchmaking & Visibility
+  PVP_SEARCH_RADIUS: 100,
+  NEARBY_BROADCAST_RADIUS: 50,
+  SPAWN_CHANCE_DEPTH_SCALER: 2000,
 
   // 🎲 Loot Scaling (Per 50km depth)
   LOOT_DEPTH_INTERVAL: 50,
   LOOT_CHANCE_GROWTH: 0.05, // +5% chance per interval
   LOOT_QUANTITY_GROWTH: 0.1, // +10% quantity per interval
   LOOT_RARITY_WEIGHT_FACTOR: 1.15, // Multiplier for Rare+ scaling
-  LOOT_LUK_QUALITY_BONUS: 0.01, // Each LUK point adds 1% to the depth multiplier
+  LOOT_LUK_QUALITY_BONUS: 0.001, // Each LUK point adds 0.1% to the depth multiplier
   GLOBAL_MYTHICAL_CHANCE: 0.0001, // 0.01% base chance for surprise drops
 };
 

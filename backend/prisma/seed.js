@@ -201,30 +201,30 @@ async function main() {
     console.log("🐺 Seeding 20 World Monsters...");
     const monsterDefs = [
         // Normal Monsters (common materials drop)
-        { name: "Forest Slime", hp: 60, atk: 8, def: 3, exp: 15, loot: [{ item: "T1_FIBER", chance: 0.7, min: 1, max: 3 }] },
-        { name: "Dire Wolf", hp: 200, atk: 30, def: 15, exp: 80, loot: [{ item: "T2_HIDE", chance: 0.6, min: 1, max: 2 }] },
-        { name: "Skeleton Warrior", hp: 350, atk: 55, def: 30, exp: 150, loot: [{ item: "IRON_ORE", chance: 0.5, min: 2, max: 5 }] },
-        { name: "Crypt Spider", hp: 280, atk: 65, def: 20, exp: 140, loot: [{ item: "T2_FIBER", chance: 0.6, min: 1, max: 3 }] },
-        { name: "Minotaur", hp: 800, atk: 120, def: 80, exp: 400, loot: [{ item: "T3_HIDE", chance: 0.5, min: 1, max: 2 }] },
-        { name: "Sea Serpent", hp: 600, atk: 100, def: 60, exp: 350, loot: [{ item: "T3_FISH", chance: 0.6, min: 1, max: 3 }] },
-        { name: "Golem", hp: 1200, atk: 180, def: 160, exp: 700, loot: [{ item: "COPPER_ORE", chance: 0.5, min: 2, max: 4 }] },
-        { name: "Dark Mage", hp: 900, atk: 200, def: 80, exp: 600, loot: [{ item: "T3_FIBER", chance: 0.5, min: 1, max: 2 }, { item: "POTION_M", chance: 0.3, min: 1, max: 1 }] },
-        { name: "Wyvern", hp: 2500, atk: 350, def: 280, exp: 1500, loot: [{ item: "T4_HIDE", chance: 0.4, min: 1, max: 2 }] },
-        { name: "Vampire Lord", hp: 3500, atk: 500, def: 350, exp: 2500, loot: [{ item: "T4_FIBER", chance: 0.4, min: 1, max: 2 }, { item: "POTION_L", chance: 0.2, min: 1, max: 1 }] },
+        { name: "Forest Slime", hp: 60, atk: 8, def: 3, exp: 15, minDepth: 0, loot: [{ item: "T1_FIBER", chance: 0.7, min: 1, max: 3 }] },
+        { name: "Dire Wolf", hp: 200, atk: 30, def: 15, exp: 80, minDepth: 150, loot: [{ item: "T2_HIDE", chance: 0.6, min: 1, max: 2 }] },
+        { name: "Skeleton Warrior", hp: 350, atk: 55, def: 30, exp: 150, minDepth: 350, loot: [{ item: "IRON_ORE", chance: 0.5, min: 2, max: 5 }] },
+        { name: "Crypt Spider", hp: 280, atk: 65, def: 20, exp: 140, minDepth: 500, loot: [{ item: "T2_FIBER", chance: 0.6, min: 1, max: 3 }] },
+        { name: "Minotaur", hp: 800, atk: 120, def: 80, exp: 400, minDepth: 750, loot: [{ item: "T3_HIDE", chance: 0.5, min: 1, max: 2 }] },
+        { name: "Sea Serpent", hp: 600, atk: 100, def: 60, exp: 350, minDepth: 1000, loot: [{ item: "T3_FISH", chance: 0.6, min: 1, max: 3 }] },
+        { name: "Golem", hp: 1200, atk: 180, def: 160, exp: 700, minDepth: 1250, loot: [{ item: "COPPER_ORE", chance: 0.5, min: 2, max: 4 }] },
+        { name: "Dark Mage", hp: 900, atk: 200, def: 80, exp: 600, minDepth: 1500, loot: [{ item: "T3_FIBER", chance: 0.5, min: 1, max: 2 }, { item: "POTION_M", chance: 0.3, min: 1, max: 1 }] },
+        { name: "Wyvern", hp: 2500, atk: 350, def: 280, exp: 1500, minDepth: 1800, loot: [{ item: "T4_HIDE", chance: 0.4, min: 1, max: 2 }] },
+        { name: "Vampire Lord", hp: 3500, atk: 500, def: 350, exp: 2500, minDepth: 2200, loot: [{ item: "T4_FIBER", chance: 0.4, min: 1, max: 2 }, { item: "POTION_L", chance: 0.2, min: 1, max: 1 }] },
         // Elite Monsters (exclusive legendary drops)
-        { name: "Golden Slime", hp: 200, atk: 10, def: 800, exp: 5000, loot: [{ item: "IRON_ORE", chance: 0.8, min: 3, max: 8 }, { item: "MIDAS_TOUCH", chance: 0.005, min: 1, max: 1 }] },
-        { name: "Grim Reaper", hp: 8000, atk: 1200, def: 800, exp: 15000, loot: [{ item: "T5_HIDE", chance: 0.3, min: 1, max: 2 }, { item: "DEATHS_GRIP", chance: 0.01, min: 1, max: 1 }] },
-        { name: "Air Spirit", hp: 5000, atk: 900, def: 500, exp: 12000, loot: [{ item: "T4_FIBER", chance: 0.4, min: 1, max: 2 }, { item: "HERMES_SANDALS", chance: 0.01, min: 1, max: 1 }] },
-        { name: "Stone Golem", hp: 7000, atk: 800, def: 1200, exp: 18000, loot: [{ item: "MITHRIL_ORE", chance: 0.3, min: 1, max: 3 }, { item: "MOUNTAIN_CRUSHERS", chance: 0.01, min: 1, max: 1 }] },
-        { name: "Chaos Demon", hp: 9000, atk: 1800, def: 900, exp: 30000, loot: [{ item: "T5_FIBER", chance: 0.3, min: 1, max: 2 }, { item: "CHAOS_BLADE", chance: 0.005, min: 1, max: 1 }] },
-        { name: "Void Stalker", hp: 8500, atk: 1600, def: 1000, exp: 28000, loot: [{ item: "T5_HIDE", chance: 0.3, min: 1, max: 2 }, { item: "SHADOW_GARB", chance: 0.005, min: 1, max: 1 }] },
-        { name: "Arch-Lich", hp: 12000, atk: 2500, def: 1200, exp: 50000, loot: [{ item: "T5_FIBER", chance: 0.2, min: 1, max: 2 }, { item: "MERLIN_STAFF", chance: 0.001, min: 1, max: 1 }] },
-        { name: "Void Creature", hp: 10000, atk: 2000, def: 1000, exp: 40000, loot: [{ item: "T5_HIDE", chance: 0.2, min: 1, max: 2 }, { item: "GAZE_OF_VOID", chance: 0.01, min: 1, max: 1 }] },
-        { name: "Fire Dragon", hp: 15000, atk: 2800, def: 1800, exp: 70000, loot: [{ item: "T5_HIDE", chance: 0.2, min: 1, max: 2 }, { item: "PHOENIX_CAPE", chance: 0.001, min: 1, max: 1 }] },
-        { name: "Elder Dragon", hp: 20000, atk: 3500, def: 2500, exp: 100000, loot: [{ item: "T5_HIDE", chance: 0.2, min: 1, max: 2 }, { item: "ARTEMIS_BOW", chance: 0.001, min: 1, max: 1 }] },
+        { name: "Golden Slime", hp: 200, atk: 10, def: 800, exp: 5000, minDepth: 500, loot: [{ item: "IRON_ORE", chance: 0.8, min: 3, max: 8 }, { item: "MIDAS_TOUCH", chance: 0.005, min: 1, max: 1 }] },
+        { name: "Grim Reaper", hp: 8000, atk: 1200, def: 800, exp: 15000, minDepth: 2500, loot: [{ item: "T5_HIDE", chance: 0.3, min: 1, max: 2 }, { item: "DEATHS_GRIP", chance: 0.01, min: 1, max: 1 }] },
+        { name: "Air Spirit", hp: 5000, atk: 900, def: 500, exp: 12000, minDepth: 3000, loot: [{ item: "T4_FIBER", chance: 0.4, min: 1, max: 2 }, { item: "HERMES_SANDALS", chance: 0.01, min: 1, max: 1 }] },
+        { name: "Stone Golem", hp: 7000, atk: 800, def: 1200, exp: 18000, minDepth: 3500, loot: [{ item: "MITHRIL_ORE", chance: 0.3, min: 1, max: 3 }, { item: "MOUNTAIN_CRUSHERS", chance: 0.01, min: 1, max: 1 }] },
+        { name: "Chaos Demon", hp: 9000, atk: 1800, def: 900, exp: 30000, minDepth: 4000, loot: [{ item: "T5_FIBER", chance: 0.3, min: 1, max: 2 }, { item: "CHAOS_BLADE", chance: 0.005, min: 1, max: 1 }] },
+        { name: "Void Stalker", hp: 8500, atk: 1600, def: 1000, exp: 28000, minDepth: 4500, loot: [{ item: "T5_HIDE", chance: 0.3, min: 1, max: 2 }, { item: "SHADOW_GARB", chance: 0.005, min: 1, max: 1 }] },
+        { name: "Arch-Lich", hp: 12000, atk: 2500, def: 1200, exp: 50000, minDepth: 5000, loot: [{ item: "T5_FIBER", chance: 0.2, min: 1, max: 2 }, { item: "MERLIN_STAFF", chance: 0.001, min: 1, max: 1 }] },
+        { name: "Void Creature", hp: 10000, atk: 2000, def: 1000, exp: 40000, minDepth: 5500, loot: [{ item: "T5_HIDE", chance: 0.2, min: 1, max: 2 }, { item: "GAZE_OF_VOID", chance: 0.01, min: 1, max: 1 }] },
+        { name: "Fire Dragon", hp: 15000, atk: 2800, def: 1800, exp: 70000, minDepth: 6000, loot: [{ item: "T5_HIDE", chance: 0.2, min: 1, max: 2 }, { item: "PHOENIX_CAPE", chance: 0.001, min: 1, max: 1 }] },
+        { name: "Elder Dragon", hp: 20000, atk: 3500, def: 2500, exp: 100000, minDepth: 7000, loot: [{ item: "T5_HIDE", chance: 0.2, min: 1, max: 2 }, { item: "ARTEMIS_BOW", chance: 0.001, min: 1, max: 1 }] },
     ];
     for (const m of monsterDefs) {
-        const mt = await prisma.monsterTemplate.create({ data: { name: m.name, hp: m.hp, attack: m.atk, defense: m.def, expReward: m.exp } });
+        const mt = await prisma.monsterTemplate.create({ data: { name: m.name, hp: m.hp, attack: m.atk, defense: m.def, expReward: m.exp, minDepth: m.minDepth } });
         for (const l of m.loot) {
             await prisma.lootTable.create({ data: { monsterTemplateId: mt.id, itemCode: l.item, chance: l.chance, minQuantity: l.min, maxQuantity: l.max } });
         }

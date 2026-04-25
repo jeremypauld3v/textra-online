@@ -44,7 +44,7 @@ export default function FilterSection({
       <View className="bg-slate-950 border border-slate-800 rounded-2xl flex-row items-center px-4 py-2.5 mb-4">
         <Ionicons name="search" size={16} color="#475569" />
         <TextInput
-          className="flex-1 ml-3 text-white font-bold text-xs"
+          className="flex-1 ml-3 text-white text-xs"
           placeholder="Search by name..."
           placeholderTextColor="#475569"
           value={searchQuery}
@@ -68,7 +68,7 @@ export default function FilterSection({
             }`}
           >
             <Text
-              className={`font-black text-[10px] uppercase tracking-widest ${
+              className={`text-[10px] uppercase tracking-widest ${
                 selectedType === cat.value ? "text-white" : "text-slate-500"
               }`}
             >
@@ -93,7 +93,7 @@ export default function FilterSection({
               style={selectedRarity === rar.value && rar.color ? { borderColor: rar.color + "80", backgroundColor: rar.color + "20" } : {}}
             >
               <Text
-                className={`font-black text-[10px] uppercase tracking-widest ${
+                className={`text-[10px] uppercase tracking-widest ${
                   selectedRarity === rar.value ? "text-white" : "text-slate-700"
                 }`}
                 style={selectedRarity === rar.value && rar.color ? { color: rar.color } : {}}

@@ -91,13 +91,27 @@ export const travelWorker = new Worker(travelQueueName, async (job) => {
     }
     console.log(`Pulse for ${character.name} [${character.actionStatus}] at ${character.currentDepth}km`);
     // 🏥 Town Regen (Math.max(0, depth) ensures city logic at 0)
-    if (character.currentDepth === 0 && character.hp < character.maxHp) {
+    if (character.currentDepth === 0 && (character.hp < character.maxHp || character.energy < character.maxEnergy)) {
         await prisma.character.update({
             where: { id: characterId },
-            data: { hp: character.maxHp }
+            data: { hp: character.maxHp, energy: character.maxEnergy }
         });
         character.hp = character.maxHp;
+        character.energy = character.maxEnergy;
         console.log(`[REGEN] ${character.name} healed to full in Valoria City`);
+    }
+    // ⛺ Camp Regen
+    if (character.actionStatus === "CAMPING") {
+        if (character.hp < character.maxHp || character.energy < character.maxEnergy) {
+            const newHp = Math.min(character.maxHp, character.hp + Math.max(1, Math.floor(character.maxHp * 0.05)));
+            const newEnergy = Math.min(character.maxEnergy, character.energy + 5);
+            await prisma.character.update({
+                where: { id: characterId },
+                data: { hp: newHp, energy: newEnergy }
+            });
+            character.hp = newHp;
+            character.energy = newEnergy;
+        }
     }
     // 1. Check for PVP Encounter (If in Danger Zone — 5% chance per pulse to keep it rare)
     if (character.currentDepth >= GAME_BALANCE.SAFE_ZONE_LIMIT &&
@@ -143,18 +157,32 @@ export const travelWorker = new Worker(travelQueueName, async (job) => {
     let nextDepth = character.currentDepth;
     let nextStatus = character.actionStatus;
     if (character.actionStatus === "TRAVELING_OUT") {
-        nextDepth += GAME_BALANCE.TRAVEL_OUT_DISTANCE;
-    }
-    else if (character.actionStatus === "TRAVELING_IN") {
-        nextDepth = Math.max(0, character.currentDepth - GAME_BALANCE.TRAVEL_IN_DISTANCE); // Returning is 2x faster
-        if (nextDepth === 0) {
-            nextStatus = "IDLE";
-            console.log(`${character.name} returned to Valoria City.`);
+        if (character.energy <= 0) {
+            nextStatus = "CAMPING"; // Force camp if exhausted
+            console.log(`🏕️ ${character.name} is exhausted and forced to camp.`);
+        }
+        else {
+            nextDepth += GAME_BALANCE.TRAVEL_OUT_DISTANCE;
+            await prisma.character.update({ where: { id: characterId }, data: { energy: { decrement: 1 } } });
         }
     }
-    // Update Depth
+    else if (character.actionStatus === "TRAVELING_IN") {
+        if (character.energy <= 0) {
+            nextStatus = "CAMPING";
+            console.log(`🏕️ ${character.name} is exhausted and forced to camp.`);
+        }
+        else {
+            nextDepth = Math.max(0, character.currentDepth - GAME_BALANCE.TRAVEL_IN_DISTANCE); // Returning is 2x faster
+            await prisma.character.update({ where: { id: characterId }, data: { energy: { decrement: 1 } } });
+            if (nextDepth === 0) {
+                nextStatus = "IDLE";
+                console.log(`${character.name} returned to Valoria City.`);
+            }
+        }
+    }
+    // Update Depth & Presence
     if (nextDepth !== character.currentDepth || nextStatus !== character.actionStatus) {
-        await prisma.character.update({
+        const updatedChar = await prisma.character.update({
             where: { id: characterId },
             data: {
                 currentDepth: nextDepth,
@@ -169,6 +197,10 @@ export const travelWorker = new Worker(travelQueueName, async (job) => {
         else {
             await connection.zrem("players_depth", characterId);
         }
+    }
+    else if (character.actionStatus !== "IDLE" && character.actionStatus !== "ENCOUNTER") {
+        // Even if depth didn't change (e.g. CAMPING), ensure we are in Redis if active
+        await connection.zadd("players_depth", character.currentDepth, characterId);
     }
     // 🚀 Queue next pulse ONLY if still active (Traveling or Camping)
     // If in ENCOUNTER or IDLE, recursion stops until manually resumed.

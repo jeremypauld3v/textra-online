@@ -1,13 +1,13 @@
 import "./global.css";
 import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import Toast, { BaseToast, ErrorToast, InfoToast } from "react-native-toast-message";
-import { useEffect } from "react";
+import React, { useEffect, memo } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useGameStore } from "../store/useGameStore";
 import { SocketProvider, useSocket } from "../context/SocketContext";
 import { CustomAlert } from "../components/CustomAlert";
-import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 
 SplashScreen.preventAutoHideAsync();
@@ -60,18 +60,50 @@ function GlobalUI() {
   );
 }
 
-export default function RootLayout() {
+function NavigationGuard({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((state) => state.token);
-  const hydrate = useAuthStore((state) => state.hydrate);
-  const fetchMetadata = useGameStore((state) => state.fetchMetadata);
   const router = useRouter();
   const segments = useSegments();
-  const rootNavigationState = useRootNavigationState();
+  const navigationState = useRootNavigationState();
 
-  const [fontsLoaded] = useFonts({
-    "Silkscreen-Regular": require("../assets/fonts/Silkscreen-Regular.ttf"),
-    "Silkscreen-Bold": require("../assets/fonts/Silkscreen-Bold.ttf"),
-  });
+  useEffect(() => {
+    if (!navigationState?.key) return;
+
+    const inAuthGroup = segments[0] === "(auth)";
+
+    if (!token && !inAuthGroup) {
+      router.replace("/(auth)/login");
+    } else if (token && inAuthGroup) {
+      router.replace("/(tabs)/adventure");
+    }
+  }, [token, segments, router, navigationState?.key]);
+
+  if (!navigationState?.key) return null;
+
+  return <>{children}</>;
+}
+
+const RootLayoutNav = () => {
+  return (
+    <NavigationGuard>
+      <SocketProvider>
+        <Stack 
+          screenOptions={{ 
+            headerShown: false, 
+            contentStyle: { backgroundColor: "#000000" } 
+          }} 
+        />
+        <GlobalUI />
+        <Toast config={toastConfig} />
+      </SocketProvider>
+    </NavigationGuard>
+  );
+};
+
+export default function RootLayout() {
+  const hydrate = useAuthStore((state) => state.hydrate);
+  const isLoadingSession = useAuthStore((state) => state.isLoadingSession);
+  const fetchMetadata = useGameStore((state) => state.fetchMetadata);
 
   useEffect(() => {
     hydrate();
@@ -79,42 +111,20 @@ export default function RootLayout() {
   }, [hydrate, fetchMetadata]);
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (!isLoadingSession) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [isLoadingSession]);
 
-  useEffect(() => {
-    // If navigation isn't ready, don't try to redirect yet
-    if (!rootNavigationState?.key) return;
-
-    const inAuthGroup = segments[0] === "(auth)";
-
-    if (!token && !inAuthGroup) {
-      const timer = setTimeout(() => {
-        router.replace("/(auth)/login");
-      }, 1);
-      return () => clearTimeout(timer);
-    } else if (token && inAuthGroup) {
-      const timer = setTimeout(() => {
-        router.replace("/(tabs)/adventure");
-      }, 1);
-      return () => clearTimeout(timer);
-    }
-  }, [token, segments, router, rootNavigationState?.key]);
-
-  if (!fontsLoaded) return null;
+  if (isLoadingSession) {
+    return null;
+  }
 
   return (
-    <SafeAreaProvider>
-      <SocketProvider>
-        <Stack screenOptions={{ 
-            headerShown: false, 
-            contentStyle: { backgroundColor: "#000000" } 
-        }} />
-        <GlobalUI />
-        <Toast config={toastConfig} />
-      </SocketProvider>
-    </SafeAreaProvider>
+    <KeyboardProvider>
+      <SafeAreaProvider>
+        <RootLayoutNav />
+      </SafeAreaProvider>
+    </KeyboardProvider>
   );
 }

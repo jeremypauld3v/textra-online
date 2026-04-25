@@ -2,6 +2,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, S
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import { useState } from "react";
+import { useAuthStore } from "../../store/useAuthStore";
 import { authApi, RegisterSchema } from "../../api/auth";
 
 export default function RegisterScreen() {
@@ -9,6 +10,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [charName, setCharName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const login = useAuthStore((state) => state.login);
   const router = useRouter();
 
   const handleRegister = async () => {
@@ -16,10 +18,13 @@ export default function RegisterScreen() {
       const validatedData = RegisterSchema.parse({ email, password, characterName: charName });
       
       setIsLoading(true);
-      await authApi.register(validatedData);
+      const data = await authApi.register(validatedData);
       
-      Alert.alert("Hero Forged!", `Welcome to the realm, ${charName}. Please sign in to journey.`);
-      router.replace("/(auth)/login");
+      // Auto-login after registration
+      await login(data.token, data.characterId, data.userId);
+      
+      Alert.alert("Hero Forged!", `Welcome to the realm, ${charName}. Your journey begins now.`);
+      router.replace("/(tabs)/adventure");
     } catch (err: any) {
       if (err.name === "ZodError") {
         Alert.alert("Validation Error", err.errors[0].message);
@@ -47,47 +52,47 @@ export default function RegisterScreen() {
           <View className="absolute bottom-[-100px] right-[-50px] w-96 h-96 bg-slate-100/10 rounded-full blur-3xl opacity-30" />
           
           <View className="z-10 py-10">
-            <Text className="text-4xl font-bold text-white mb-2 font-sans">
+            <Text className="text-4xl text-white mb-2 font-sans">
               Forge Legacy
             </Text>
-            <Text className="text-slate-400 font-bold mb-10 text-[10px] font-sans">
+            <Text className="text-slate-400 mb-10 text-[10px] font-sans">
               Create your hero and claim your destiny.
             </Text>
 
             <View className="space-y-4">
               <View>
-                <Text className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wider ml-1 font-sans">Email</Text>
+                <Text className="text-slate-400 text-[10px] mb-2 uppercase tracking-wider ml-1 font-sans">Email</Text>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
                   placeholder="wanderer@realm.com"
                   placeholderTextColor="#475569"
-                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-bold shadow-inner font-sans"
+                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 shadow-inner font-sans"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
               </View>
               
               <View className="mt-4">
-                <Text className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wider ml-1 font-sans">Character Name</Text>
+                <Text className="text-slate-400 text-[10px] mb-2 uppercase tracking-wider ml-1 font-sans">Character Name</Text>
                 <TextInput
                   value={charName}
                   onChangeText={setCharName}
                   placeholder="E.g., Arthas"
                   placeholderTextColor="#475569"
-                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-bold shadow-inner font-sans"
+                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 shadow-inner font-sans"
                 />
               </View>
 
               <View className="mt-4">
-                <Text className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wider ml-1 font-sans">Password</Text>
+                <Text className="text-slate-400 text-[10px] mb-2 uppercase tracking-wider ml-1 font-sans">Password</Text>
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
                   placeholder="••••••••"
                   placeholderTextColor="#475569"
                   secureTextEntry
-                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 font-bold shadow-inner font-sans"
+                  className="w-full bg-slate-900/80 text-slate-100 px-5 py-4 rounded-xl border border-slate-800 shadow-inner font-sans"
                 />
               </View>
 
@@ -96,7 +101,7 @@ export default function RegisterScreen() {
                 disabled={isLoading}
                 className={`w-full bg-white py-4 rounded-xl mt-8 shadow-lg ${isLoading ? 'opacity-50' : ''}`}
               >
-                <Text className="text-black text-center font-bold text-lg tracking-wide font-sans">
+                <Text className="text-black text-center text-lg tracking-wide font-sans">
                   {isLoading ? 'Forging...' : 'Create Hero'}
                 </Text>
               </TouchableOpacity>
@@ -106,7 +111,7 @@ export default function RegisterScreen() {
               <Text className="text-slate-500 font-sans">Already a legend? </Text>
               <Link href="/(auth)/login" asChild>
                 <TouchableOpacity>
-                  <Text className="text-white font-bold underline font-sans">Sign In</Text>
+                  <Text className="text-white underline font-sans">Sign In</Text>
                 </TouchableOpacity>
               </Link>
             </View>

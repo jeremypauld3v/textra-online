@@ -1,194 +1,166 @@
-import { View, Text, TouchableOpacity, ActivityIndicator, FlatList } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text, Pressable, ActivityIndicator, FlatList, Alert, ScrollView } from "react-native";
 import { useState, useCallback, useMemo } from "react";
 import { useFocusEffect } from "expo-router";
-import { gameApi } from "../../api/game";
+import { gameApi, InventoryItem } from "../../api/game";
 import { useGameStore } from "../../store/useGameStore";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 
 // UI Components
-import FilterButton from "../../components/ui/FilterButton";
 import ScreenHeader from "../../components/ui/ScreenHeader";
+import StandardButton from "../../components/ui/StandardButton";
+
+const CATEGORIES = ["ALL", "EQUIPMENT", "CONSUMABLE", "MATERIAL"];
 
 export default function CraftingScreen() {
-  const itemTemplates = useGameStore((state) => state.items);
-  const [recipes, setRecipes] = useState<any[]>([]);
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isCrafting, setIsCrafting] = useState(false);
-
-  // Filter States
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("ALL");
-  const [selectedRarity, setSelectedRarity] = useState("ALL");
+  const [loading, setLoading] = useState(true);
+  const [recipes, setRecipes] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const itemTemplates = useGameStore((s) => s.items);
 
   const fetchData = useCallback(async () => {
     try {
-      const [recipeData, invData] = await Promise.all([
+      const [rData, iData] = await Promise.all([
         gameApi.getRecipes(),
         gameApi.getInventory()
       ]);
-      setRecipes(recipeData.recipes);
-      setInventory(invData.inventory);
-    } catch (e) {
-      console.error("Failed to fetch crafting data", e);
+      setRecipes(rData.recipes);
+      setInventory(iData.inventory);
+    } catch {
+      Toast.show({ type: "error", text1: "Forge Cold" });
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const filteredRecipes = useMemo(() => {
-    let list = recipes;
-
-    if (searchQuery) {
-      list = list.filter((r) => {
-        const meta = itemTemplates[r.resultItemCode];
-        return meta?.name?.toLowerCase()?.includes(searchQuery.toLowerCase());
-      });
-    }
-
-    if (selectedType !== "ALL") {
-      list = list.filter((r) => {
-        const meta = itemTemplates[r.resultItemCode];
-        return meta?.type === selectedType;
-      });
-    }
-
-    if (selectedRarity !== "ALL") {
-       list = list.filter((r) => {
-          const meta = itemTemplates[r.resultItemCode];
-          return meta?.rarityId === selectedRarity;
-       });
-    }
-
-    return list;
-  }, [recipes, searchQuery, selectedType, selectedRarity, itemTemplates]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData])
-  );
+  useFocusEffect(useCallback(() => {
+    fetchData();
+  }, [fetchData]));
 
   const getOwnedQuantity = (itemCode: string) => {
-    const item = inventory.find(i => i.itemCode === itemCode);
+    const item = inventory.find((i: InventoryItem) => i.itemCode === itemCode);
     return item ? item.quantity : 0;
   };
 
+  const filteredRecipes = useMemo(() => {
+    if (selectedType === "ALL") return recipes;
+    return recipes.filter((r: any) => itemTemplates[r.resultItemCode]?.type === selectedType);
+  }, [recipes, selectedType, itemTemplates]);
+
   const handleCraft = async (recipeId: string) => {
-    try {
-      setIsCrafting(true);
-      const res = await gameApi.craft(recipeId);
-      Toast.show({ type: "success", text1: "Forgery Complete!", text2: res.message });
-      fetchData();
-    } catch (e: any) {
-      Toast.show({ type: "error", text1: "Forgery Failed", text2: e.response?.data?.error || "Missing materials" });
-    } finally {
-      setIsCrafting(false);
-    }
+    Alert.alert(
+      "Forge Confirmation",
+      "Consume materials to forge this item?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Forge", 
+          onPress: async () => {
+            try {
+              await gameApi.craft(recipeId);
+              Toast.show({ type: "success", text1: "Item Forged!" });
+              fetchData();
+            } catch (e: any) {
+              Alert.alert("Forge Error", e.response?.data?.error || "Insufficient Materials");
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (loading) {
     return (
-      <View className="flex-1 bg-slate-950 justify-center items-center">
-        <ActivityIndicator color="#6366f1" size="large" />
+      <View className="flex-1 bg-[#020617] justify-center items-center">
+        <ActivityIndicator color="#f472b6" size="large" />
       </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-950">
-      <View className="flex-1 px-6 pt-10">
-        {/* Header */}
+    <View className="flex-1 bg-[#020617]">
+      <View className="flex-1 px-6 pt-20">
+        
         <ScreenHeader 
-          title="The Forge"
-          subtitle="Ancient Blueprints"
-          rightElement={
-             <View className="bg-slate-900 w-12 h-12 rounded-2xl border border-slate-800 items-center justify-center">
-                <Ionicons name="hammer" size={20} color="#6366f1" />
-             </View>
-          }
+          title="Forge" 
+          subtitle="Ancient Artifice" 
+          badge={`${recipes.length} Blueprints`}
         />
 
-        <FilterButton 
-           searchQuery={searchQuery}
-           setSearchQuery={setSearchQuery}
-           selectedType={selectedType}
-           setSelectedType={setSelectedType}
-           selectedRarity={selectedRarity}
-           setSelectedRarity={setSelectedRarity}
-        />
+        {/* 🧭 FILTER SEALS */}
+        <View className="h-12 mb-8 bg-slate-900/40 p-1.5 rounded-2xl border border-white/5">
+           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View className="flex-row space-x-2">
+                 {CATEGORIES.map((cat) => (
+                   <Pressable 
+                     key={cat} 
+                     onPress={() => setSelectedType(cat)} 
+                     className={`px-6 py-2 rounded-xl border ${selectedType === cat ? "bg-slate-800 border-white/10" : "border-transparent"}`}
+                   >
+                      <Text className={`text-[8px] font-pixel-bold uppercase tracking-widest ${selectedType === cat ? "text-white" : "text-slate-600"}`}>{cat}</Text>
+                   </Pressable>
+                 ))}
+              </View>
+           </ScrollView>
+        </View>
 
+        {/* 📜 RECIPE LIST */}
         <FlatList
           data={filteredRecipes}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          ListHeaderComponent={() => (
-            <Text className="text-slate-600 font-bold uppercase text-[10px] tracking-widest mb-6 border-l-2 border-white pl-4 py-1 font-sans">Available Blueprints ({filteredRecipes.length})</Text>
-          )}
-          renderItem={({ item: recipe }) => {
-            const resultMeta = itemTemplates[recipe.resultItemCode];
-            const canCraft = recipe.ingredients.every((ing: any) => getOwnedQuantity(ing.itemCode) >= ing.quantity);
-
+          renderItem={({ item: r }) => {
+            const meta = itemTemplates[r.resultItemCode];
+            const canCraft = r.ingredients.every((ing: any) => getOwnedQuantity(ing.itemCode) >= ing.quantity);
             return (
-              <View className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3 mb-2 flex-row items-center">
-                {/* Result Icon */}
-                <View className="w-10 h-10 bg-slate-950 rounded-xl items-center justify-center border border-slate-800 mr-4">
-                   <Text className="text-xl">{resultMeta?.emoji || "📦"}</Text>
-                </View>
-
-                {/* Details Column */}
-                <View className="flex-1">
-                   <Text className="text-white font-bold text-xs italic uppercase tracking-tight leading-tight font-sans" numberOfLines={1}>{resultMeta?.name}</Text>
-                   
-                   {/* Mini Ingredients Row */}
-                   <View className="flex-row flex-wrap mt-1.5">
-                     {recipe.ingredients.map((ing: any) => {
-                       const ingMeta = itemTemplates[ing.itemCode];
-                       const owned = getOwnedQuantity(ing.itemCode);
-                       const hasEnough = owned >= ing.quantity;
-                       
-                       return (
-                         <View key={ing.id} className="mr-2 flex-row items-center">
-                           <Text className="mr-1 text-[8px]">{ingMeta?.emoji || "📦"}</Text>
-                           <Text className={`font-black text-[8px] ${hasEnough ? 'text-slate-400' : 'text-slate-600'}`}>
-                             {owned}/{ing.quantity}
-                           </Text>
-                         </View>
-                       );
-                     })}
+              <View className="mb-4 bg-slate-900/60 p-4 rounded-2xl border border-white/5 overflow-hidden relative">
+                <View style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, backgroundColor: canCraft ? 'rgba(16, 185, 129, 0.05)' : 'rgba(244, 63, 94, 0.02)', borderRadius: 30, transform: [{ scale: 2 }] }} />
+                
+                <View className="flex-row items-center mb-4">
+                   <View className="w-12 h-12 bg-black/40 rounded-xl items-center justify-center border border-white/10 mr-4">
+                      <Text className="text-2xl">{meta?.emoji || "⚒️"}</Text>
                    </View>
+                   <View className="flex-1">
+                      <Text className="text-white text-base font-pixel-bold leading-tight mb-0.5">{meta?.name?.toUpperCase()}</Text>
+                      <Text className="text-slate-600 text-[8px] font-pixel-bold uppercase tracking-[2px]">{meta?.type}</Text>
+                   </View>
+                   <StandardButton 
+                     label={canCraft ? "FORGE" : "LOCKED"}
+                     onPress={() => handleCraft(r.id)}
+                     variant={canCraft ? "primary" : "secondary"}
+                     disabled={!canCraft}
+                     size="sm"
+                   />
                 </View>
 
-                {/* Compact Craft Button */}
-                <TouchableOpacity 
-                   onPress={() => handleCraft(recipe.id)}
-                   disabled={!canCraft || isCrafting}
-                   className={`px-4 py-2 rounded-xl border ${
-                     canCraft ? 'bg-white border-white' : 'bg-slate-800 border-slate-700 opacity-40'
-                   }`}
-                >
-                   {isCrafting ? (
-                     <ActivityIndicator size="small" color="#000000" />
-                   ) : (
-                     <Text className={`font-black text-[8px] uppercase tracking-widest ${canCraft ? 'text-black' : 'text-slate-500'}`}>
-                       {canCraft ? "Forge" : "Locked"}
-                     </Text>
-                   )}
-                </TouchableOpacity>
+                {/* 🎒 INGREDIENTS GRID */}
+                <View className="bg-black/20 p-3 rounded-xl border border-white/5 flex-row flex-wrap">
+                   {r.ingredients.map((ing: any, idx: number) => {
+                     const ingMeta = itemTemplates[ing.itemCode];
+                     const owned = getOwnedQuantity(ing.itemCode);
+                     const hasEnough = owned >= ing.quantity;
+                     return (
+                       <View key={idx} className="flex-row items-center mr-6 mb-2">
+                          <Text className="text-lg mr-2">{ingMeta?.emoji || "📦"}</Text>
+                          <Text className={`text-[9px] font-pixel-bold ${hasEnough ? "text-slate-400" : "text-rose-500"}`}>
+                             {owned} / {ing.quantity}
+                          </Text>
+                       </View>
+                     );
+                   })}
+                </View>
               </View>
             );
           }}
           ListEmptyComponent={
-            <View className="flex-1 justify-center items-center py-20">
-               <Ionicons name="construct-outline" size={64} color="#1e293b" />
-               <Text className="text-slate-600 mt-4 font-bold italic font-sans">No recipes discovered yet...</Text>
+            <View className="items-center justify-center py-20 opacity-30">
+               <Ionicons name="hammer-outline" size={64} color="#475569" />
+               <Text className="text-slate-600 text-sm font-pixel-bold uppercase tracking-widest mt-6">Anvil is Cold</Text>
             </View>
           }
-          ListFooterComponent={<View className="h-20" />}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }

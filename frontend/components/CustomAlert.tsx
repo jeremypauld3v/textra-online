@@ -40,7 +40,7 @@ export const CustomAlert: React.FC<CustomAlertProps> = ({ visible, title, messag
           <Ionicons name={iconData.name as any} size={32} color={iconData.color} />
         </View>
 
-        <Text className="text-white text-xl font-black italic uppercase text-center">{title}</Text>
+        <Text className="text-white text-xl uppercase text-center">{title}</Text>
         <Text className="text-slate-500 text-sm text-center mt-2 leading-5 tracking-tight">{message}</Text>
       </View>
 

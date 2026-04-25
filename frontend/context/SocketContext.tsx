@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSocialStore } from '../store/useSocialStore';
 import Toast from 'react-native-toast-message';
-import { router } from 'expo-router';
+import { router, useRootNavigationState } from 'expo-router';
 
 interface AlertConfig {
   visible: boolean;
@@ -55,6 +56,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const token = useAuthStore((state) => state.token);
   const currentUserId = useAuthStore((state) => state.userId);
+  const navigationState = useRootNavigationState();
+  const navStateRef = useRef(navigationState);
+
+  useEffect(() => {
+    navStateRef.current = navigationState;
+  }, [navigationState]);
 
   const hideAlert = useCallback(() => setAlertConfig(prev => ({ ...prev, visible: false })), []);
   const showAlert = useCallback((config: Omit<AlertConfig, 'visible'>) => {
@@ -96,6 +103,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setConnected(true);
     });
 
+    newSocket.on('connect_error', (err) => {
+      console.error('🔌 Socket connection error:', err.message);
+      if (err.message.includes('Authentication error')) {
+        useAuthStore.getState().logout();
+      }
+    });
+
     newSocket.on('disconnect', () => {
       console.log('🔌 Socket disconnected');
       setConnected(false);
@@ -129,7 +143,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
        setTradeWith(data.partnerUserId); // store partner ID so trade.tsx can read it
        hideAlert();
        // Navigate to dedicated trade screen (avoids NavigationContainer issues from inside a Modal)
-       router.push('/trade');
+       if (navStateRef.current?.key) {
+         router.push('/trade');
+       }
     });
 
     newSocket.on("trade_declined", (data: { fromUserId?: string, message?: string }) => {
@@ -172,6 +188,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
        });
     });
 
+    newSocket.on("friend_request_received", (data: { fromName: string, fromUserId: string }) => {
+       useSocialStore.getState().setHasFriendRequest(true);
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -180,19 +200,21 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  const value = React.useMemo(() => ({
+    socket,
+    connected,
+    onlineUserIds,
+    tradeWith,
+    setTradeWith,
+    requestTrade,
+    hasPendingRequest,
+    alertConfig,
+    hideAlert,
+    showAlert
+  }), [socket, connected, onlineUserIds, tradeWith, requestTrade, hasPendingRequest, alertConfig, hideAlert, showAlert]);
+
   return (
-    <SocketContext.Provider value={{ 
-       socket, 
-       connected, 
-       onlineUserIds, 
-       tradeWith, 
-       setTradeWith, 
-       requestTrade,
-       hasPendingRequest,
-       alertConfig,
-       hideAlert,
-       showAlert
-    }}>
+    <SocketContext.Provider value={value}>
       {children}
     </SocketContext.Provider>
   );

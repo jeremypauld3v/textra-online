@@ -19,11 +19,11 @@ export default function ScreenHeader({
     <View className={`flex-row justify-between items-center mb-6 ${className}`}>
       <View className="flex-1">
         {subtitle && (
-          <Text className="text-slate-500 font-bold uppercase text-[8px] tracking-wider mb-0.5 font-pixel-bold">
+          <Text className="text-slate-500 uppercase text-[8px] tracking-wider mb-0.5 font-pixel-bold">
             {subtitle}
           </Text>
         )}
-        <Text className="text-2xl font-bold text-white italic uppercase tracking-normal font-pixel-bold">
+        <Text className="text-2xl text-white uppercase tracking-normal font-pixel-bold">
           {title}
         </Text>
       </View>
@@ -31,7 +31,7 @@ export default function ScreenHeader({
       <View className="flex-row items-center">
         {badge && (
           <View className="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 mr-3">
-            <Text className="text-white font-bold italic text-xs font-pixel-bold">{badge}</Text>
+            <Text className="text-white text-xs font-pixel-bold">{badge}</Text>
           </View>
         )}
         {rightElement}

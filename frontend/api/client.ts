@@ -11,9 +11,16 @@ export const apiClient = axios.create({
 // Intercept requests to inject the JWT token automatically
 apiClient.interceptors.request.use((config) => {
   // get token from zustand safely
-  const token = useAuthStore.getState().token;
+  const state = useAuthStore.getState();
+  const token = state.token;
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  } else {
+    // Only warn if we're hitting a game/admin route without a token
+    if (config.url && (config.url.includes("/game/") || config.url.includes("/admin/")) && !config.url.includes("/metadata")) {
+      console.warn(`Attempting to call authenticated route without token: ${config.url}`);
+    }
   }
   return config;
 });
@@ -22,10 +29,10 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // If the token is invalid (401) or the character was deleted on the server (404),
+    // If the token is invalid (401) or character not found (404), 
     // automatically log the user out to bring them back to the login screen.
     if (error.response?.status === 401 || error.response?.status === 404) {
-      console.warn("Auth Error Detected: Auto-logging out...");
+      console.warn(`Auth Error (${error.response?.status}): Auto-logging out...`);
       useAuthStore.getState().logout();
     }
     return Promise.reject(error);

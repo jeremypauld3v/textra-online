@@ -19,8 +19,8 @@ import { getIO } from "../socket.js";
 async function rollPvPEncounter(characterId: string, depth: number) {
   if (depth < GAME_BALANCE.SAFE_ZONE_LIMIT) return null; // Attacker must be in danger zone
 
-  // Search Redis for nearby players (+/- 50km)
-  const nearbyIds = await connection.zrangebyscore("players_depth", depth - 50, depth + 50);
+  // Search Redis for nearby players
+  const nearbyIds = await connection.zrangebyscore("players_depth", depth - GAME_BALANCE.PVP_SEARCH_RADIUS, depth + GAME_BALANCE.PVP_SEARCH_RADIUS);
   
   const targets = nearbyIds.filter(id => id !== characterId);
   if (targets.length === 0) return null;
@@ -66,9 +66,9 @@ async function rollPulseEncounter(character: any) {
   
   // Scaling Math:
   // Valoria (0): 30%
-  // 400km: 50%
+  // 2000km: 50%
   // Cap at 50%
-  const spawnChance = Math.min(GAME_BALANCE.MAX_SPAWN_CHANCE, GAME_BALANCE.BASE_SPAWN_CHANCE + (depth / 2000));
+  const spawnChance = Math.min(GAME_BALANCE.MAX_SPAWN_CHANCE, GAME_BALANCE.BASE_SPAWN_CHANCE + (depth / GAME_BALANCE.SPAWN_CHANCE_DEPTH_SCALER));
 
   const roll = Math.random();
   if (roll > spawnChance) return null;
@@ -108,13 +108,37 @@ export const travelWorker = new Worker(
     console.log(`Pulse for ${character.name} [${character.actionStatus}] at ${character.currentDepth}km`);
 
     // 🏥 Town Regen (Math.max(0, depth) ensures city logic at 0)
-    if (character.currentDepth === 0 && character.hp < character.maxHp) {
+    if (character.currentDepth === 0 && (character.hp < character.maxHp || character.energy < character.maxEnergy)) {
       await prisma.character.update({
         where: { id: characterId },
-        data: { hp: character.maxHp }
+        data: { hp: character.maxHp, energy: character.maxEnergy }
       });
       character.hp = character.maxHp;
+      character.energy = character.maxEnergy;
       console.log(`[REGEN] ${character.name} healed to full in Valoria City`);
+    }
+
+    // ⛺ Camp Regen
+    if (character.actionStatus === "CAMPING") {
+      if (character.hp < character.maxHp || character.energy < character.maxEnergy) {
+         const newHp = Math.min(character.maxHp, character.hp + Math.max(1, Math.floor(character.maxHp * 0.05)));
+         const newEnergy = Math.min(character.maxEnergy, character.energy + 5);
+         await prisma.character.update({
+            where: { id: characterId },
+            data: { hp: newHp, energy: newEnergy }
+         });
+         character.hp = newHp;
+         character.energy = newEnergy;
+      }
+    }
+
+    // 📍 ALWAYS UPDATE REAL-TIME LOCATION (For PvP Matchmaking & Social)
+    // We keep players in Redis even if they are in an ENCOUNTER,
+    // rollPvPEncounter will handle the status check.
+    if (character.actionStatus !== "IDLE") {
+      await connection.zadd("players_depth", character.currentDepth, characterId);
+    } else {
+      await connection.zrem("players_depth", characterId);
     }
 
     // 1. Check for PVP Encounter (If in Danger Zone — 5% chance per pulse to keep it rare)
@@ -143,7 +167,7 @@ export const travelWorker = new Worker(
        }
 
        // 🌐 Social Immersion: Broadcast nearby count
-       const totalNearby = (await connection.zrangebyscore("players_depth", character.currentDepth - 10, character.currentDepth + 10)).length;
+       const totalNearby = (await connection.zrangebyscore("players_depth", character.currentDepth - GAME_BALANCE.NEARBY_BROADCAST_RADIUS, character.currentDepth + GAME_BALANCE.NEARBY_BROADCAST_RADIUS)).length;
        const io = getIO();
        io.to(`user:${character.userId}`).emit("zone_update", { nearbyCount: Math.max(0, totalNearby - 1) });
     }
@@ -171,16 +195,31 @@ export const travelWorker = new Worker(
     let nextStatus = character.actionStatus;
 
     if (character.actionStatus === "TRAVELING_OUT") {
-      nextDepth += GAME_BALANCE.TRAVEL_OUT_DISTANCE;
+      if (character.energy <= 0) {
+        nextStatus = "CAMPING"; // Force camp if exhausted
+        console.log(`🏕️ ${character.name} is exhausted and forced to camp.`);
+        getIO().to(`user:${character.userId}`).emit("exhaustion_forced_camp", { message: "You are too exhausted to continue. Setting up camp..." });
+      } else {
+        nextDepth += GAME_BALANCE.TRAVEL_OUT_DISTANCE;
+        await prisma.character.update({ where: { id: characterId }, data: { energy: { decrement: 1 } } });
+      }
     } else if (character.actionStatus === "TRAVELING_IN") {
-      nextDepth = Math.max(0, character.currentDepth - GAME_BALANCE.TRAVEL_IN_DISTANCE); // Returning is 2x faster
-      if (nextDepth === 0) {
-        nextStatus = "IDLE";
-        console.log(`${character.name} returned to Valoria City.`);
+      if (character.energy <= 0) {
+        nextStatus = "CAMPING";
+        console.log(`🏕️ ${character.name} is exhausted and forced to camp.`);
+        getIO().to(`user:${character.userId}`).emit("exhaustion_forced_camp", { message: "You are too exhausted to continue. Setting up camp..." });
+      } else {
+        nextDepth = Math.max(0, character.currentDepth - GAME_BALANCE.TRAVEL_IN_DISTANCE); // Returning is 2x faster
+        await prisma.character.update({ where: { id: characterId }, data: { energy: { decrement: 1 } } });
+        if (nextDepth === 0) {
+          nextStatus = "IDLE";
+          console.log(`${character.name} returned to Valoria City.`);
+        }
       }
     }
 
-    // Update Depth
+
+    // Update character state if changed
     if (nextDepth !== character.currentDepth || nextStatus !== character.actionStatus) {
       await prisma.character.update({
         where: { id: characterId },
@@ -190,13 +229,6 @@ export const travelWorker = new Worker(
           lastPulseAt: new Date()
         }
       });
-
-      // 📍 UPDATE REAL-TIME LOCATION (For PvP Matching)
-      if (nextStatus !== "IDLE" && nextStatus !== "ENCOUNTER") {
-        await connection.zadd("players_depth", nextDepth, characterId);
-      } else {
-        await connection.zrem("players_depth", characterId);
-      }
     }
 
     // 🚀 Queue next pulse ONLY if still active (Traveling or Camping)
@@ -214,6 +246,8 @@ export const travelWorker = new Worker(
            removeOnFail: true
          }
        );
+    } else if (nextStatus === "IDLE") {
+       await connection.zrem("players_depth", characterId);
     }
 
     return { success: true, encounterFound: false };

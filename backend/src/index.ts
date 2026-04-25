@@ -18,11 +18,15 @@ const server = Fastify({
 });
 
 import { gameRoutes } from "./routes/game.js";
+import { adminRoutes } from "./routes/admin.js";
 import { initSocket } from "./socket.js";
+import { startChatCleanupJob } from "./services/chatCleanupService.js";
 
 async function main() {
   await server.register(cors, {
     origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   });
 
   await server.register(jwt, {
@@ -32,12 +36,16 @@ async function main() {
   // Initialize Socket.io
   initSocket(server);
 
+  // Start background chat maintenance
+  startChatCleanupJob();
+
   server.get("/health", async (request, reply) => {
     return { status: "ok" };
   });
 
   server.register(authRoutes, { prefix: "/api/auth" });
   server.register(gameRoutes, { prefix: "/api/game" });
+  server.register(adminRoutes, { prefix: "/api/admin" });
 
   const port = parseInt(process.env.PORT || "3000", 10);
   const host = process.env.HOST || "0.0.0.0";

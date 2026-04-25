@@ -1,85 +1,83 @@
 import { Tabs } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSocialStore } from "../../store/useSocialStore";
 
 export default function TabsLayout() {
-  const insets = useSafeAreaInsets();
+  const hasSocialNotification = useSocialStore((state) => state.hasUnreadWhispers || state.hasFriendRequest);
   
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarStyle: {
-          backgroundColor: "#000000",
+          backgroundColor: "#020617",
           borderTopWidth: 1,
-          borderTopColor: "#111111",
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
-          paddingTop: 10,
-          height: Platform.OS === "ios" ? 85 + insets.bottom : 65 + (insets.bottom > 0 ? insets.bottom : 0),
+          borderTopColor: "rgba(251, 191, 36, 0.05)", // Subtle gold top border
+          elevation: 20,
+          shadowOpacity: 0.5,
+          shadowRadius: 15,
+          shadowColor: "#000",
+          height: Platform.OS === "ios" ? 88 : 72,
+          paddingBottom: Platform.OS === "ios" ? 32 : 12,
         },
-        tabBarActiveTintColor: "#FFFFFF",
-        tabBarInactiveTintColor: "#555555",
-        tabBarLabelStyle: {
-          fontFamily: "Silkscreen-Regular",
-          fontSize: 9,
-          fontWeight: "500",
-          textTransform: "uppercase",
-          letterSpacing: 0.5,
-        },
+        tabBarActiveTintColor: "#fbbf24", // Ancient Gold
+        tabBarInactiveTintColor: "#475569", // Muted Slate
       }}
     >
       <Tabs.Screen
         name="adventure"
         options={{
-          title: "Explore",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="map-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "compass" : "compass-outline"} size={26} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="character"
         options={{
-          title: "Hero",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "person" : "person-outline"} size={26} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="inventory"
         options={{
-          title: "Bag",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="briefcase-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="marketplace"
-        options={{
-          title: "Market",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "briefcase" : "briefcase-outline"} size={26} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="crafting"
         options={{
-          title: "Forge",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="hammer-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "hammer" : "hammer-outline"} size={26} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="marketplace"
+        options={{
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "cart" : "cart-outline"} size={26} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="social"
         options={{
-          title: "Social",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ position: 'relative' }}>
+              <Ionicons name={focused ? "people" : "people-outline"} size={26} color={color} />
+              {hasSocialNotification && (
+                <View 
+                  style={{ position: 'absolute', right: -4, top: -2, width: 8, height: 8, borderRadius: 4, backgroundColor: '#f43f5e', borderWidth: 2, borderColor: '#020617' }}
+                />
+              )}
+            </View>
           ),
         }}
       />

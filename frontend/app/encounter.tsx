@@ -1,16 +1,17 @@
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
+import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 import { useEncounterStore } from "../store/useEncounterStore";
-import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, withSpring, withDelay, FadeInDown } from "react-native-reanimated";
 
 // UI Components
 import ProgressBar from "../components/ui/ProgressBar";
-
-// Constants
 import { GAME_CONFIG } from "../constants/GameConfig";
-import { UI_STRINGS } from "../constants/Strings";
+
+const IDLE_SPRITE = require("../assets/sprites/beta_character_idle_side.gif");
+const ATTACK_SPRITE = require("../assets/sprites/beta_character_attack.gif");
 
 export default function EncounterScreen() {
   const router = useRouter();
@@ -19,155 +20,160 @@ export default function EncounterScreen() {
 
   const [simTurn, setSimTurn] = useState(0);
   const [simStarted, setSimStarted] = useState(false);
+  const [isPlayerAttacking, setIsPlayerAttacking] = useState(false);
+  const [isEnemyAttacking, setIsEnemyAttacking] = useState(false);
+  
+  const playerPosX = useSharedValue(0);
+  const playerRotation = useSharedValue(0);
+  const enemyPosX = useSharedValue(0);
+  const playerShake = useSharedValue(0);
+  const enemyShake = useSharedValue(0);
+  const damageOpacity = useSharedValue(0);
+  const lastDamage = useSharedValue(0);
+  const damagePosX = useSharedValue(0);
+  const isCritValue = useSharedValue(0);
+  const screenShake = useSharedValue(0);
+  const flashOpacity = useSharedValue(0);
 
   const safeBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(tabs)/adventure");
-    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/adventure");
   }, [router]);
 
-  // If no battle data, immediately go back
+  useEffect(() => { if (!simBattle) safeBack(); }, [simBattle, safeBack]);
   useEffect(() => {
-    if (!simBattle) {
-      safeBack();
-    }
-  }, [simBattle, safeBack]);
-
-  // Delay before animation starts
-  useEffect(() => {
-    if (!simBattle) {
-      setSimStarted(false);
-      return;
-    }
+    if (!simBattle) { setSimStarted(false); return; }
     setSimStarted(false);
-    const delay = setTimeout(() => setSimStarted(true), GAME_CONFIG.BATTLE_START_DELAY);
+    const delay = setTimeout(() => setSimStarted(true), 1200);
     return () => clearTimeout(delay);
-  }, [simBattle, simBattle?.log]);
+  }, [simBattle]);
 
-  // Turn-by-turn progression
+  const triggerAnimation = useCallback((attacker: string, damage: number, isCrit?: boolean) => {
+    const isPlayer = attacker === "Player";
+    const targetShake = isPlayer ? enemyShake : playerShake;
+    const attackerPos = isPlayer ? playerPosX : enemyPosX;
+    lastDamage.value = damage;
+    damagePosX.value = isPlayer ? 60 : -60;
+    isCritValue.value = isCrit ? 1 : 0;
+    if (isPlayer) setIsPlayerAttacking(true); else setIsEnemyAttacking(true);
+
+    if (isCrit) {
+       flashOpacity.value = withSequence(withTiming(0.4, { duration: 50 }), withTiming(0, { duration: 200 }));
+       screenShake.value = withSequence(withTiming(15, { duration: 50 }), withTiming(-15, { duration: 50 }), withTiming(0, { duration: 50 }));
+    }
+
+    const direction = isPlayer ? 1 : -1;
+    attackerPos.value = withSequence(withTiming(80 * direction, { duration: 200 }), withSpring(0, { damping: 15 }));
+
+    setTimeout(() => {
+      Haptics.impactAsync(isCrit ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+      targetShake.value = withSequence(withTiming(isCrit ? 20 : 10, { duration: 50 }), withTiming(0, { duration: 50 }));
+      if (damage > 0) damageOpacity.value = withSequence(withTiming(1, { duration: 100 }), withDelay(isCrit ? 800 : 400, withTiming(0, { duration: 300 })));
+      setTimeout(() => { setIsPlayerAttacking(false); setIsEnemyAttacking(false); }, 300);
+    }, 180);
+  }, [playerPosX, enemyPosX, playerShake, enemyShake, lastDamage, damageOpacity, damagePosX, isCritValue, screenShake, flashOpacity]);
+
   useEffect(() => {
     if (!simBattle || !simStarted) return;
+    const currentTurnData = simBattle.log.logDetails[simTurn];
+    if (currentTurnData) triggerAnimation(currentTurnData.attacker, currentTurnData.damage, currentTurnData.isCrit);
     if (simTurn < simBattle.log.logDetails.length - 1) {
-      const t = setTimeout(() => setSimTurn((v) => v + 1), GAME_CONFIG.BATTLE_TURN_DELAY);
+      const turnDelay = simBattle.log.logDetails[simTurn]?.isCrit ? GAME_CONFIG.BATTLE_TURN_DELAY + 400 : GAME_CONFIG.BATTLE_TURN_DELAY;
+      const t = setTimeout(() => setSimTurn((v) => v + 1), turnDelay);
       return () => clearTimeout(t);
     }
     if (simTurn === simBattle.log.logDetails.length - 1) {
       const t = setTimeout(() => {
-        if (simBattle.isPvp) {
-          Toast.show({
-            type: simBattle.isWin ? "success" : "error",
-            text1: simBattle.isWin ? UI_STRINGS.BATTLE_VICTORY : UI_STRINGS.BATTLE_DEFEAT,
-            text2: simBattle.isWin ? `Looted ${simBattle.goldStolen || 0} gold!` : "Lost 10% gold and some items.",
-            visibilityTime: GAME_CONFIG.BATTLE_TOAST_DURATION,
-          });
-        }
         setSimBattle(null);
         setSimTurn(0);
         setSimStarted(false);
-      }, GAME_CONFIG.BATTLE_END_DELAY);
+      }, GAME_CONFIG.BATTLE_END_DELAY + 500);
       return () => clearTimeout(t);
     }
-  }, [simBattle, simTurn, simStarted, router, setSimBattle, safeBack]);
+  }, [simBattle, simTurn, simStarted, triggerAnimation, setSimBattle]);
 
-  // HP tracking
   const combatSim = useMemo(() => {
     if (!simBattle || !simStarted) return null;
-    let p = simBattle.startPlayerHp;
-    let e = simBattle.startEnemyHp;
+    let p = simBattle.startPlayerHp || 0, e = simBattle.startEnemyHp || 0;
     for (let i = 0; i <= simTurn; i++) {
       const turn = simBattle.log.logDetails[i];
       if (!turn) break;
-      if (turn.attacker === "Player") e = Math.max(0, e - turn.damage);
-      else p = Math.max(0, p - turn.damage);
+      if (turn.attacker === "Player") e = Math.max(0, e - turn.damage); else p = Math.max(0, p - turn.damage);
     }
-    return {
-      playerHpPct: (p / simBattle.startMaxPlayerHp) * 100,
-      enemyHpPct: (e / simBattle.startMaxEnemyHp) * 100,
-      playerHp: p,
-      enemyHp: e,
-    };
+    return { playerHp: p, enemyHp: e };
   }, [simBattle, simTurn, simStarted]);
 
-  if (!simBattle) return null;
+  const playerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: playerPosX.value + playerShake.value }, { rotate: `${playerRotation.value}deg` }] }));
+  const enemyStyle = useAnimatedStyle(() => ({ transform: [{ translateX: enemyPosX.value + enemyShake.value }] }));
+  const damageTextStyle = useAnimatedStyle(() => ({
+    opacity: damageOpacity.value,
+    transform: [{ translateY: -60 - (damageOpacity.value * 60) }, { translateX: damagePosX.value }, { scale: isCritValue.value ? 1.8 : 1.2 }]
+  }));
+
+  const enemyDisplay = useMemo(() => {
+    if (!simBattle?.isGathering) return "👹";
+    const name = simBattle.enemyName || "";
+    if (name.includes("Tree")) return "🌳";
+    if (name.includes("Ore")) return "⛏️";
+    return "📦";
+  }, [simBattle]);
 
   return (
-    <SafeAreaView className="flex-1 bg-black px-6 justify-center items-center">
-      {!simStarted ? (
-        /* ── Pre-battle countdown ── */
-        <View className="items-center">
-          <Text className="text-white text-xl font-bold italic uppercase mb-1 tracking-widest font-sans">
-            {simBattle.isPvp ? "⚔️ PVP BATTLE" : simBattle.isGathering ? "⚒️ GATHERING" : "⚔️ COMBAT"}
-          </Text>
-          <Text className="text-slate-500 font-bold text-center uppercase tracking-widest text-[8px] font-sans">
-            {simBattle.playerName ?? "You"}
-            {" vs "}
-            {simBattle.enemyName ?? simBattle.log?.enemyName ?? "Enemy"}
-          </Text>
-          <ActivityIndicator size="small" color="#f43f5e" className="mt-8" />
-          <Text className="text-slate-600 font-bold text-[8px] mt-4 uppercase tracking-[4px] font-sans">Initializing...</Text>
+    <View className="flex-1 bg-[#020617]">
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: flashOpacity.value, backgroundColor: "white", zIndex: 99 }]} pointerEvents="none" />
+      
+      {!simBattle || !simStarted ? (
+        <View className="flex-1 justify-center items-center px-12">
+           <ActivityIndicator size="small" color="#818cf8" />
+           <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase tracking-[4px] mt-8">Initializing Encounter</Text>
         </View>
       ) : (
-        /* ── Active battle ── */
-        <View className="flex-1 w-full justify-center items-center">
-          {/* HP Bars */}
-          <View className="flex-row justify-between items-center w-full mb-12 px-2">
-            <View className="flex-1 items-center">
-              <Text className="text-white font-bold text-sm mb-3 uppercase tracking-tighter font-sans" numberOfLines={1}>
-                {simBattle.isGathering ? "Worker" : (simBattle.playerName ?? "You")}
-              </Text>
-              <ProgressBar 
-                current={combatSim?.playerHp ?? 0} 
-                max={simBattle.startMaxPlayerHp} 
-                color="indigo" 
-                showValues={false} 
-                size="sm" 
-              />
-              <Text className="text-slate-600 font-bold text-[9px] mt-2 uppercase font-sans">
-                {simBattle.isGathering ? "Efficiency" : `${Math.floor(combatSim?.playerHp ?? 0)} HP`}
-              </Text>
-            </View>
-
-            <View className="mx-6 items-center">
-               <Text className="text-white font-bold text-xl italic opacity-20 font-sans">{simBattle.isGathering ? "AT" : "VS"}</Text>
-            </View>
-
-            <View className="flex-1 items-center">
-              <Text className="text-rose-400 font-bold text-sm mb-3 uppercase tracking-tighter font-sans" numberOfLines={1}>
-                {simBattle.isGathering ? "Resource" : (simBattle.enemyName ?? simBattle.log?.enemyName)}
-              </Text>
-              <ProgressBar 
-                current={combatSim?.enemyHp ?? 0} 
-                max={simBattle.startMaxEnemyHp} 
-                color="rose" 
-                showValues={false} 
-                size="sm" 
-              />
-              <Text className="text-slate-600 font-bold text-[9px] mt-2 uppercase font-sans">
-                {simBattle.isGathering ? "Integrity" : `${Math.floor(combatSim?.enemyHp ?? 0)} HP`}
-              </Text>
-            </View>
+        <Animated.View style={[{ flex: 1 }, { transform: [{ translateX: screenShake.value }] }]}>
+          {/* ⚔️ MINIMALIST HUD */}
+          <View className="px-8 pt-12 flex-row justify-between">
+             <View className="flex-1 pr-6 border-r border-white/5">
+                <Text className="text-white text-base font-pixel-bold mb-2">{Math.floor(combatSim?.playerHp ?? 0)} HP</Text>
+                <ProgressBar current={combatSim?.playerHp ?? 0} max={simBattle.startMaxPlayerHp || 1} color="rose" size="xs" hideLabel />
+             </View>
+             <View className="flex-1 pl-6">
+                <Text className="text-rose-500 text-base font-pixel-bold mb-2 text-right">{Math.floor(combatSim?.enemyHp ?? 0)} HP</Text>
+                <ProgressBar current={combatSim?.enemyHp ?? 0} max={simBattle.startMaxEnemyHp || 1} color="rose" size="xs" hideLabel />
+             </View>
           </View>
 
-          {/* Log message */}
-          <View className="w-full bg-slate-900 border border-slate-800 p-6 rounded-[32px] shadow-2xl">
-            <Text className="text-white text-base font-bold text-center leading-tight italic uppercase tracking-tighter font-sans">
-              {simBattle.log.logDetails[simTurn]?.message}
-            </Text>
+          {/* 🎭 STAGE */}
+          <View className="flex-1 items-center justify-center">
+            <View className="flex-row items-center justify-between w-full px-12">
+              <Animated.View style={playerStyle}><Image source={isPlayerAttacking ? ATTACK_SPRITE : IDLE_SPRITE} style={{ width: 140, height: 140 }} contentFit="contain" /></Animated.View>
+              <Animated.View style={enemyStyle}>
+                {simBattle.isPvp ? <Image source={isEnemyAttacking ? ATTACK_SPRITE : IDLE_SPRITE} style={{ width: 140, height: 140, transform: [{ scaleX: -1 }] }} contentFit="contain" /> : <Text className="text-4xl">{enemyDisplay}</Text>}
+              </Animated.View>
+            </View>
+
+            <Animated.View style={damageTextStyle} className="absolute pointer-events-none items-center justify-center">
+              <Animated.Text style={{ 
+                fontSize: isCritValue.value ? 48 : 32, 
+                fontWeight: '900',
+                color: isCritValue.value ? "#fbbf24" : "#f43f5e",
+                textShadowColor: 'rgba(0, 0, 0, 0.75)',
+                textShadowOffset: {width: -1, height: 1},
+                textShadowRadius: 10
+              }}>
+                {lastDamage.value > 0 ? `-${lastDamage.value}` : 'MISS'}
+              </Animated.Text>
+            </Animated.View>
           </View>
 
-          {/* Turn dots */}
-          <View className="flex-row mt-12 space-x-1.5 flex-wrap justify-center">
-            {simBattle.log.logDetails.map((_: any, idx: number) => (
-              <View 
-                key={idx} 
-                className={`h-1.5 rounded-full ${idx === simTurn ? "w-8 bg-white" : "w-1.5 bg-slate-800"}`} 
-              />
-            ))}
+          {/* 📜 MINIMALIST LOG */}
+          <View className="pb-32 px-12">
+             <Animated.View key={simTurn} entering={FadeInDown}>
+                <Text className={`text-center font-pixel-bold uppercase tracking-tight ${simBattle.log.logDetails[simTurn]?.isCrit ? "text-amber-400 text-xl" : "text-white text-xs"}`}>
+                  {simBattle.log.logDetails[simTurn]?.message}
+                </Text>
+             </Animated.View>
           </View>
-        </View>
+        </Animated.View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }

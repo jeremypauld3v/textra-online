@@ -6,10 +6,16 @@ import { gameDataManager } from "./gameDataManager.js";
  * Handles the logic for equipping and unequipping gear.
  */
 export class EquipmentService {
+  private statsCache = new Map<string, { stats: any, timestamp: number }>();
+  private CACHE_TTL = 5000; // 5 seconds cache for stats
+
   /**
    * 🗡️ Equip an item from inventory to a slot
    */
   async equipItem(characterId: string, inventoryItemId: string) {
+    // Invalidate cache
+    this.statsCache.delete(characterId);
+    
     // 1. Fetch item and character
     const invItem = await prisma.inventoryItem.findUnique({
       where: { id: inventoryItemId },
@@ -74,6 +80,9 @@ export class EquipmentService {
    * 🚶 Unequip an item from a slot
    */
   async unequipItem(characterId: string, slot: "WEAPON" | "CHEST" | "HELMET" | "BOOTS" | "GLOVES" | "CAPE" | "NECKLACE" | "RING1" | "RING2") {
+    // Invalidate cache
+    this.statsCache.delete(characterId);
+
     let updateData = {};
     if (slot === "WEAPON") updateData = { equippedWeaponId: null };
     else if (slot === "CHEST") updateData = { equippedChestId: null };
@@ -96,6 +105,12 @@ export class EquipmentService {
    * Uses per-item rolled stats if available, otherwise falls back to template base stats.
    */
   async getCharacterCombatStats(characterId: string) {
+    const now = Date.now();
+    const cached = this.statsCache.get(characterId);
+    if (cached && (now - cached.timestamp < this.CACHE_TTL)) {
+      return cached.stats;
+    }
+
     const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: {
@@ -154,15 +169,23 @@ export class EquipmentService {
 
     const finalDef = (totalAgi * 1) + totalDef;
 
-    return {
+    const finalMaxEnergy = 100 + (totalInt * 1);
+
+    const finalStats = {
       atk: finalAtk,
       def: finalDef,
       str: totalStr,
       agi: totalAgi,
       dex: character.dex,
       int: totalInt,
-      luk: totalLuk
+      luk: totalLuk,
+      maxEnergy: finalMaxEnergy
     };
+
+    // Save to cache
+    this.statsCache.set(characterId, { stats: finalStats, timestamp: Date.now() });
+
+    return finalStats;
   }
 }
 

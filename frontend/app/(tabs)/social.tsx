@@ -1,412 +1,417 @@
-import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Modal, ScrollView } from "react-native";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { View, Text, TextInput, Pressable, FlatList, Platform, KeyboardAvoidingView, ActivityIndicator } from "react-native";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../../context/SocketContext";
 import { useAuthStore } from "../../store/useAuthStore";
 import { gameApi } from "../../api/game";
+import BaseModal from "../../components/ui/BaseModal";
+import StandardButton from "../../components/ui/StandardButton";
+import Toast from "react-native-toast-message";
 
-interface ChatMessage {
-  id: string;
-  userId: string;
-  characterName: string;
-  message: string;
-  timestamp: string;
-}
-
-interface Friend {
-  id: string;
-  userId: string;
-  name: string;
-  level: number;
-}
-
-interface PrivateMessage {
-  fromUserId: string;
-  fromCharacterName: string;
-  message: string;
-  timestamp: string;
-}
+type ChatTab = "global" | "trade" | "whispers";
 
 export default function SocialScreen() {
-  const { socket, connected, onlineUserIds, requestTrade, showAlert, hideAlert, hasPendingRequest } = useSocket();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [activeTab, setActiveTab] = useState<ChatTab>("global");
   const [input, setInput] = useState("");
-  const [targetIGN, setTargetIGN] = useState("");
-  const [isAddingFriend, setIsAddingFriend] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
-  const currentUserId = useAuthStore((state) => state.userId);
-
-  // 👥 Social State
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [selectedUser, setSelectedUser] = useState<{ userId: string, name: string } | null>(null);
   const [isFriendListVisible, setIsFriendListVisible] = useState(false);
-  const [activePmUser, setActivePmUser] = useState<Friend | null>(null);
-  const [pmInput, setPmInput] = useState("");
-  const [privateHistory, setPrivateHistory] = useState<Record<string, PrivateMessage[]>>({});
+  const [chatLogs, setChatLogs] = useState<any[]>([]);
+  const { socket, connected, requestTrade } = useSocket();
+  const characterId = useAuthStore(s => s.characterId);
+  const flatListRef = useRef<FlatList>(null);
 
-  const fetchFriends = useCallback(async () => {
-    try {
-      const data = await gameApi.getFriends();
-      setFriends(data.friends);
-    } catch (e) {
-      console.error("Failed to fetch friends", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchFriends();
-  }, [fetchFriends]);
-
-  const fetchWorldHistory = useCallback(async () => {
-    try {
-      const data = await gameApi.getWorldChatHistory();
-      setMessages(data.messages);
-    } catch (e) {
-      console.error("Failed to fetch world chat history", e);
-    }
-  }, []);
-
-  const fetchPrivateHistory = useCallback(async (targetUserId: string) => {
-    try {
-      const data = await gameApi.getPrivateChatHistory(targetUserId);
-      setPrivateHistory(prev => ({
-        ...prev,
-        [targetUserId]: data.messages
-      }));
-    } catch (e) {
-      console.error("Failed to fetch private chat history", e);
-    }
-  }, []);
+  // Friends State
+  const [friends, setFriends] = useState<any[]>([]);
+  const [pending, setPending] = useState<any[]>([]);
+  const [friendNameInput, setFriendNameInput] = useState("");
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<{ id: string, name: string, userId?: string } | null>(null);
+  const [whisperTarget, setWhisperTarget] = useState<{ id: string, name: string } | null>(null);
+  const [whisperPartners, setWhisperPartners] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchWorldHistory();
-  }, [fetchWorldHistory]);
-
-  useEffect(() => {
-    if (activePmUser) {
-      fetchPrivateHistory(activePmUser.userId);
-    }
-  }, [activePmUser, fetchPrivateHistory]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on("chat_broadcast", (data: any) => {
-      setMessages((prev) => {
-         // Prevent duplicates
-         if (prev.find(m => m.id === data.id)) return prev;
-         return [...prev, data].slice(-100);
-      });
-    });
-
-    socket.on("private_broadcast", (data: PrivateMessage) => {
-      const partnerId = data.fromUserId === currentUserId ? activePmUser?.userId : data.fromUserId;
-      if (!partnerId) return;
-
-      setPrivateHistory(prev => ({
-        ...prev,
-        [partnerId]: [...(prev[partnerId] || []), data].slice(-50)
-      }));
-    });
-
-    return () => {
-      socket.off("chat_broadcast");
-      socket.off("private_broadcast");
+    // Initial history fetch
+    const fetchHistory = async () => {
+       try {
+          let messages = [];
+          if (activeTab === "global") {
+             const data = await gameApi.getWorldChatHistory();
+             messages = data.messages;
+          } else if (activeTab === "trade") {
+             const data = await gameApi.getTradeChatHistory();
+             messages = data.messages;
+          }
+          setChatLogs(messages);
+       } catch (e) {
+          console.error("Failed to fetch chat history", e);
+       }
     };
-  }, [socket, activePmUser, currentUserId]);
+    fetchHistory();
+  }, [activeTab]);
 
-  const handleAddFriend = async (name: string) => {
-    if (!name.trim()) return;
+  const fetchWhisperPartners = async () => {
     try {
-      setIsAddingFriend(true);
-      await gameApi.addFriend(name.trim());
-      showAlert({
-         title: "Success",
-         message: `${name} has been added to your friends.`,
-         type: 'success',
-         onConfirm: hideAlert
-      });
-      setTargetIGN("");
-      fetchFriends();
-      setSelectedUser(null);
-    } catch (e: any) {
-      showAlert({
-         title: "Error",
-         message: e.response?.data?.error || "Failed to add friend",
-         type: 'error',
-         onConfirm: hideAlert
-      });
-    } finally {
-      setIsAddingFriend(false);
+       const data = await gameApi.getRecentWhisperPartners();
+       setWhisperPartners(data.partners);
+    } catch (e) {
+       console.error("Failed to load whisper partners", e);
     }
   };
 
-  const sendMessage = () => {
+  useEffect(() => {
+    if (socket) {
+      const handleMessage = (msg: any) => {
+        setChatLogs(prev => [...prev, msg]);
+        
+        // If it's a whisper and we are in the whispers tab, refresh partners list
+        if (msg.channel === "whispers") {
+           fetchWhisperPartners();
+        }
+
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      };
+      socket.on("chat_message", handleMessage);
+      return () => { socket.off("chat_message", handleMessage); };
+    }
+  }, [socket]);
+
+  useEffect(() => {
+    if (activeTab === "whispers") {
+      if (whisperTarget) {
+         const fetchPrivateHistory = async () => {
+            try {
+               const data = await gameApi.getPrivateChatHistory(whisperTarget.id);
+               setChatLogs(prev => {
+                  const otherLogs = prev.filter(l => l.channel !== "whispers");
+                  return [...otherLogs, ...data.messages];
+               });
+               setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+            } catch (e) {
+               console.error("Failed to fetch private chat", e);
+            }
+         };
+         fetchPrivateHistory();
+      } else {
+         fetchWhisperPartners();
+      }
+    }
+  }, [activeTab, whisperTarget]);
+
+  const loadFriends = async () => {
+    setLoadingFriends(true);
+    try {
+       const data = await gameApi.getFriends();
+       setFriends(data.friends);
+       setPending(data.pending);
+    } catch (e) {
+       console.error("Failed to load friends", e);
+    } finally {
+       setLoadingFriends(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isFriendListVisible) loadFriends();
+  }, [isFriendListVisible]);
+
+  const submitChat = () => {
     if (!input.trim() || !socket) return;
-    socket.emit("chat_message", input);
+    
+    const payload: any = { 
+      channel: activeTab === "whispers" ? "global" : activeTab, 
+      message: input.trim() 
+    };
+
+    // If we are in whispers and have a target selected
+    if (activeTab === "whispers" && whisperTarget) {
+      payload.channel = "whispers";
+      payload.targetUserId = whisperTarget.id;
+    }
+
+    socket.emit("chat_message", payload);
     setInput("");
   };
 
-  const sendPrivateMessage = () => {
-    if (!pmInput.trim() || !socket || !activePmUser) return;
-    socket.emit("private_message", { targetUserId: activePmUser.userId, message: pmInput });
-    setPmInput("");
+  const handleAddFriend = async () => {
+    if (!friendNameInput.trim()) return;
+    try {
+       const res = await gameApi.addFriend(friendNameInput.trim());
+       Toast.show({ type: 'success', text1: 'Nexus Link Requested', text2: res.message });
+       setFriendNameInput("");
+       loadFriends();
+    } catch (e: any) {
+       Toast.show({ type: 'error', text1: 'Link Failed', text2: e.response?.data?.error || "User not found" });
+    }
+  };
+
+  const handleAcceptFriend = async (id: string) => {
+    try {
+       await gameApi.acceptFriend(id);
+       Toast.show({ type: 'success', text1: 'Link Established' });
+       loadFriends();
+    } catch (e) {
+       console.error("Failed to accept friend", e);
+    }
+  };
+
+  const handleRemoveFriend = async (id: string) => {
+    try {
+       await gameApi.removeFriend(id);
+       Toast.show({ type: 'info', text1: 'Link Severed' });
+       loadFriends();
+       setSelectedPlayer(null);
+    } catch (e) {
+       console.error("Failed to remove friend", e);
+    }
+  };
+
+  const openPlayerOptions = (player: { id: string, name: string, userId?: string }) => {
+    if (player.id === characterId) return;
+    setSelectedPlayer(player);
+  };
+
+  const filteredLogs = useMemo(() => {
+    return chatLogs.filter(l => {
+      if (activeTab === "global") return l.channel === "global" || !l.channel;
+      if (activeTab === "trade") return l.channel === "trade";
+      if (activeTab === "whispers") {
+        if (!whisperTarget) return false;
+        // Show message if I am the sender AND it was sent to current target
+        // OR if current target is the sender
+        const isFromMe = l.senderId === characterId;
+        if (isFromMe) return l.channel === "whispers" && (l.targetId === whisperTarget.id || l.recipientId === whisperTarget.id);
+        return l.channel === "whispers" && l.senderId === whisperTarget.id;
+      }
+      return false;
+    });
+  }, [chatLogs, activeTab, whisperTarget, characterId]);
+
+  const renderWhisperPartners = () => {
+    return (
+      <FlatList
+        data={whisperPartners}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) => (
+          <Pressable 
+            onPress={() => setWhisperTarget({ id: item.id, name: item.name })}
+            className="flex-row items-center bg-slate-900/50 border border-white/5 p-4 rounded-2xl mb-3"
+          >
+             <View className="w-10 h-10 bg-indigo-500/20 rounded-full items-center justify-center mr-4">
+                <Ionicons name="person" size={20} color="#818cf8" />
+             </View>
+             <View className="flex-1">
+                <Text className="text-white text-sm font-pixel-bold">{item.name}</Text>
+                <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase">Level {item.level}</Text>
+             </View>
+             <Ionicons name="chevron-forward" size={16} color="#475569" />
+          </Pressable>
+        )}
+        ListEmptyComponent={() => (
+          <View className="items-center justify-center py-20 opacity-20">
+            <Ionicons name="chatbubbles-outline" size={48} color="#475569" />
+            <Text className="text-slate-500 text-[10px] font-pixel-bold uppercase mt-4">No active conversations</Text>
+          </View>
+        )}
+      />
+    );
+  };
+
+  const renderLogs = () => {
+    return (
+      <FlatList
+        ref={flatListRef}
+        data={filteredLogs}
+        keyExtractor={(_, i) => i.toString()}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item: l }) => (
+          <Pressable onPress={() => openPlayerOptions({ id: l.senderId, name: l.senderName, userId: l.senderUserId })} className="mb-4">
+             <View className="flex-row items-center mb-1">
+                <Text className={`text-[10px] font-pixel-bold uppercase mr-2 ${l.senderId === characterId ? "text-amber-400" : "text-indigo-400"}`}>
+                   {l.senderName}
+                </Text>
+                <Text className="text-slate-700 text-[8px] font-pixel-bold">{new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+             </View>
+             <Text className="text-slate-300 text-xs font-sans leading-relaxed">{l.message}</Text>
+          </Pressable>
+        )}
+      />
+    );
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-slate-950"
-    >
-      <View className="flex-1 px-4 pt-16">
-        <View className="flex-row items-center justify-between mb-6">
-           <View>
-              <Text className="text-3xl font-bold text-white italic uppercase tracking-tighter font-sans">Social</Text>
-              <View className="flex-row items-center mt-1">
-                 <View className={`w-2 h-2 rounded-full mr-2 ${connected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                 <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-widest">
-                    {connected ? `${onlineUserIds.length} Players Online` : 'Connecting...'}
-                 </Text>
-              </View>
-           </View>
-           <TouchableOpacity 
-            onPress={() => setIsFriendListVisible(true)}
-            className="bg-slate-900 p-3 rounded-2xl border border-slate-800"
-           >
-              <Ionicons name="people" size={20} color="#38bdf8" />
-           </TouchableOpacity>
-        </View>
-
-        {/* 💬 CHAT AREA */}
-        <View className="flex-1 bg-slate-900/50 rounded-[40px] border border-white/5 overflow-hidden p-4">
-           <FlatList
-             ref={flatListRef}
-             data={messages}
-             keyExtractor={(item) => item.id || Math.random().toString()}
-             onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-             renderItem={({ item }) => (
-                <TouchableOpacity 
-                   onPress={() => item.userId !== currentUserId && setSelectedUser({ userId: item.userId, name: item.characterName })}
-                   className={`mb-4 max-w-[80%] ${item.userId === currentUserId ? 'self-end items-end' : 'self-start items-start'}`}
-                >
-                   <Text className="text-[10px] text-slate-500 mb-1 font-bold uppercase ml-1 font-sans">
-                      {item.userId === currentUserId ? 'You' : `${item.characterName || `Player ${item.userId.substring(0, 4)}`}`}
-                   </Text>
-                   <View className={`p-4 rounded-3xl ${item.userId === currentUserId ? 'bg-sky-600 rounded-tr-none' : 'bg-slate-800 rounded-tl-none'}`}>
-                      <Text className="text-white font-bold font-sans">{item.message}</Text>
-                   </View>
-                </TouchableOpacity>
-             )}
-             ListEmptyComponent={
-                <View className="flex-1 justify-center items-center py-20">
-                   <Ionicons name="chatbubbles-outline" size={48} color="#1e293b" />
-                   <Text className="text-slate-600 font-bold italic mt-4 font-sans">Welcome to World Chat!</Text>
+    <View className="flex-1 bg-[#020617]">
+      <View style={{ position: 'absolute', top: -100, right: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(129, 140, 248, 0.05)' }} />
+      
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"} 
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
+        <View className="flex-1 pt-20 px-8">
+          <View className="flex-row justify-between items-end mb-10">
+             <View>
+                <Text className="text-white text-xl font-pixel-bold tracking-tighter">COMMUNAL</Text>
+                <View className="flex-row items-center mt-1">
+                   <View className={`w-1.5 h-1.5 rounded-full mr-2 ${connected ? "bg-emerald-500" : "bg-rose-500"}`} />
+                   <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase tracking-[4px]">{connected ? "Nexus Active" : "Nexus Severed"}</Text>
                 </View>
-             }
-           />
-        </View>
-
-        {/* ⌨️ INPUT AREA */}
-        <View className="flex-row items-center py-6 space-x-3">
-           <View className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl px-6 py-4 flex-row items-center">
-              <TextInput
-                placeholder="Message world..."
-                placeholderTextColor="#475569"
-                className="flex-1 text-white font-bold font-sans"
-                value={input}
-                onChangeText={setInput}
-                onSubmitEditing={sendMessage}
-              />
-           </View>
-           <TouchableOpacity 
-             onPress={sendMessage}
-             disabled={!input.trim()}
-             className={`w-14 h-14 rounded-full justify-center items-center ${input.trim() ? 'bg-sky-500' : 'bg-slate-800'}`}
-           >
-              <Ionicons name="send" size={20} color={input.trim() ? "white" : "#475569"} />
-           </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 🛠️ PLAYER ACTION MODAL */}
-      <Modal visible={!!selectedUser} transparent animationType="fade">
-        <TouchableOpacity 
-          className="flex-1 bg-black/60 justify-center items-center px-6"
-          activeOpacity={1}
-          onPress={() => setSelectedUser(null)}
-        >
-          <View className="bg-slate-900 w-full rounded-[40px] p-6 border border-white/10">
-            <Text className="text-white text-xl font-bold mb-6 text-center italic uppercase font-sans">Interaction: {selectedUser?.name}</Text>
-            
-            <View className="space-y-3">
-              <TouchableOpacity 
-                onPress={() => selectedUser && handleAddFriend(selectedUser.name)}
-                className="bg-sky-500/20 py-4 rounded-2xl flex-row items-center justify-center border border-sky-500/30"
-              >
-                <Ionicons name="person-add" size={20} color="#0ea5e9" className="mr-3" />
-                <Text className="text-sky-400 font-bold ml-2">Add Friend</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                onPress={() => {
-                   if (selectedUser) {
-                      requestTrade(selectedUser.userId);
-                      setSelectedUser(null);
-                   }
-                }}
-                disabled={hasPendingRequest}
-                className={`py-4 rounded-2xl flex-row items-center justify-center border ${hasPendingRequest ? 'bg-slate-800/50 border-slate-700 opacity-40' : 'bg-emerald-500/20 border-emerald-500/30'}`}
-              >
-                <Ionicons name="swap-horizontal" size={20} color="#10b981" className="mr-3" />
-                <Text className="text-emerald-400 font-bold ml-2">{hasPendingRequest ? 'Request Pending...' : 'Request Trade'}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                onPress={() => {
-                  if (selectedUser) {
-                    const friendObj = friends.find(f => f.userId === selectedUser.userId) || { userId: selectedUser.userId, name: selectedUser.name, id: '', level: 1 };
-                    setActivePmUser(friendObj);
-                    setSelectedUser(null);
-                  }
-                }}
-                className="bg-violet-500/20 py-4 rounded-2xl flex-row items-center justify-center border border-violet-500/30"
-              >
-                <Ionicons name="chatbubble-ellipses" size={20} color="#8b5cf6" className="mr-3" />
-                <Text className="text-violet-400 font-bold ml-2">Private Message</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* 👥 FRIEND LIST MODAL */}
-      <Modal visible={isFriendListVisible} animationType="slide">
-        <View className="flex-1 bg-slate-950 px-6 pt-16">
-          <View className="flex-row items-center justify-between mb-8">
-            <Text className="text-2xl font-bold text-white italic uppercase font-sans">Friends</Text>
-            <TouchableOpacity onPress={() => setIsFriendListVisible(false)}>
-              <Ionicons name="close" size={32} color="white" />
-            </TouchableOpacity>
+             </View>
+             <Pressable onPress={() => setIsFriendListVisible(true)} className="w-12 h-12 bg-slate-900 rounded-2xl items-center justify-center border border-white/10">
+                <Ionicons name="people" size={20} color="#fbbf24" />
+                {pending.length > 0 && <View className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 rounded-full items-center justify-center border-2 border-[#020617]"><Text className="text-[8px] text-white font-pixel-bold">{pending.length}</Text></View>}
+             </Pressable>
           </View>
 
-          <View className="flex-row items-center mb-8 bg-slate-900 rounded-3xl p-2 border border-white/5">
-            <TextInput
-              className="flex-1 text-white px-4 py-3 font-bold"
-              placeholder="Enter IGN..."
-              placeholderTextColor="#475569"
-              value={targetIGN}
-              onChangeText={setTargetIGN}
-              autoCapitalize="none"
-              onSubmitEditing={() => handleAddFriend(targetIGN)}
-            />
-            <TouchableOpacity 
-              onPress={() => handleAddFriend(targetIGN)}
-              disabled={isAddingFriend}
-              className={`bg-white px-6 py-3 rounded-2xl ${isAddingFriend ? 'opacity-50' : ''}`}
-            >
-              <Text className="text-black font-black text-xs uppercase">Add</Text>
-            </TouchableOpacity>
+          <View className="flex-row space-x-3 mb-10">
+             {(["global", "trade", "whispers"] as ChatTab[]).map(tab => (
+               <Pressable 
+                 key={tab} 
+                 onPress={() => setActiveTab(tab)} 
+                 className={`px-6 py-2.5 rounded-xl border-2 ${activeTab === tab ? "bg-amber-600 border-amber-400" : "bg-slate-900 border-white/5"}`}
+               >
+                  <Text className={`text-[10px] font-pixel-bold uppercase tracking-widest ${activeTab === tab ? "text-white" : "text-slate-600"}`}>{tab}</Text>
+               </Pressable>
+             ))}
           </View>
 
-          <FlatList 
-            data={friends}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => {
-              const isOnline = onlineUserIds.includes(item.userId);
-              return (
-                <View className="bg-slate-900 p-5 rounded-3xl border border-white/5 flex-row items-center justify-between mb-4">
-                  <View className="flex-row items-center">
-                    <View className={`w-3 h-3 rounded-full mr-3 ${isOnline ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50' : 'bg-slate-700'}`} />
-                    <View>
-                      <Text className="text-white font-bold text-lg font-sans">{item.name}</Text>
-                      <Text className="text-slate-500 text-[10px] font-bold uppercase font-sans">Level {item.level} • {isOnline ? 'Active' : 'Offline'}</Text>
+          <View className="flex-1 border-t border-white/5 pt-6">
+            {activeTab === "whispers" && !whisperTarget ? (
+               renderWhisperPartners()
+            ) : (
+               <>
+                 {activeTab === "whispers" && !whisperTarget && chatLogs.filter(l => l.channel === "whispers").length === 0 && (
+                    <View className="flex-1 items-center justify-center opacity-30">
+                       <Ionicons name="chatbubbles-outline" size={32} color="#475569" />
+                       <Text className="text-slate-500 text-[10px] font-pixel-bold uppercase mt-4">Select a friend to whisper</Text>
                     </View>
-                  </View>
-                  
-                  <View className="flex-row space-x-2">
-                    <TouchableOpacity 
-                      onPress={() => {
-                        setActivePmUser(item);
-                        setIsFriendListVisible(false);
-                      }}
-                      className="bg-slate-800 w-12 h-12 rounded-2xl justify-center items-center"
-                    >
-                      <Ionicons name="chatbubble-ellipses" size={20} color="#38bdf8" />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      onPress={() => requestTrade(item.userId)}
-                      disabled={hasPendingRequest}
-                      className={`w-12 h-12 rounded-2xl justify-center items-center ${hasPendingRequest ? 'bg-slate-700 opacity-40' : 'bg-slate-800'}`}
-                    >
-                      <Ionicons name="swap-horizontal" size={20} color="#10b981" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            }}
-            ListEmptyComponent={
-              <View className="flex-1 justify-center items-center py-20">
-                <Text className="text-slate-600 italic font-sans">No friends yet. Find players in chat!</Text>
-              </View>
-            }
-          />
-        </View>
-      </Modal>
-
-      {/* ✉️ PRIVATE CHAT MODAL */}
-      <Modal visible={!!activePmUser} animationType="slide">
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1 bg-slate-950"
-        >
-          <View className="flex-1 px-6 pt-16">
-            <View className="flex-row items-center justify-between mb-8">
-              <View>
-                <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-widest font-sans">Private Conversation</Text>
-                <Text className="text-2xl font-bold text-white italic uppercase underline font-sans">{activePmUser?.name}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setActivePmUser(null)}>
-                <Ionicons name="close" size={32} color="white" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView className="flex-1 mb-4">
-              {(privateHistory[activePmUser?.userId || ''] || []).map((msg, idx) => (
-                <View 
-                  key={idx}
-                  className={`mb-4 max-w-[80%] ${msg.fromUserId === currentUserId ? 'self-end items-end' : 'self-start items-start'}`}
-                >
-                  <View className={`p-4 rounded-3xl ${msg.fromUserId === currentUserId ? 'bg-white rounded-tr-none' : 'bg-slate-800 rounded-tl-none'}`}>
-                    <Text className={`font-bold font-sans ${msg.fromUserId === currentUserId ? 'text-black' : 'text-white'}`}>{msg.message}</Text>
-                  </View>
-                  <Text className="text-[8px] text-slate-600 mt-1 uppercase font-bold font-sans">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            <View className="flex-row items-center py-6 space-x-3">
-              <View className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl px-6 py-4">
-                <TextInput
-                  placeholder="Private message..."
-                  placeholderTextColor="#475569"
-                  className="text-white font-bold font-sans"
-                  value={pmInput}
-                  onChangeText={setPmInput}
-                  onSubmitEditing={sendPrivateMessage}
-                />
-              </View>
-              <TouchableOpacity 
-                onPress={sendPrivateMessage}
-                className="w-14 h-14 bg-white rounded-full justify-center items-center"
-              >
-                <Ionicons name="send" size={20} color="black" />
-              </TouchableOpacity>
-            </View>
+                 )}
+                 {renderLogs()}
+               </>
+            )}
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </KeyboardAvoidingView>
+
+          <View className="py-6">
+             {activeTab === "whispers" && whisperTarget && (
+               <View className="flex-row items-center mb-2 px-2">
+                  <Text className="text-amber-500 text-[8px] font-pixel-bold uppercase">To: {whisperTarget.name}</Text>
+                  <Pressable onPress={() => setWhisperTarget(null)} className="ml-2">
+                     <Ionicons name="close-circle" size={12} color="#475569" />
+                  </Pressable>
+               </View>
+             )}
+             <TextInput
+               className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-5 text-white text-sm font-sans"
+               placeholder={activeTab === "whispers" ? (whisperTarget ? "Type whisper..." : "Select someone...") : "Transmit message..."} 
+               placeholderTextColor="#334155" 
+               value={input} 
+               onChangeText={setInput} 
+               onSubmitEditing={submitChat}
+               returnKeyType="send"
+               editable={activeTab !== "whispers" || !!whisperTarget}
+             />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* 👥 FRIENDS MODAL */}
+      <BaseModal 
+        visible={isFriendListVisible} 
+        onClose={() => setIsFriendListVisible(false)}
+        title="SOCIAL NEXUS"
+        position="bottom"
+      >
+         <View className="h-[500px] px-2">
+            {/* ADD FRIEND INPUT */}
+            <View className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-4 py-2 mb-6">
+               <TextInput 
+                  className="flex-1 text-white text-xs font-sans"
+                  placeholder="PLAYER NAME..."
+                  placeholderTextColor="#334155"
+                  value={friendNameInput}
+                  onChangeText={setFriendNameInput}
+               />
+               <Pressable onPress={handleAddFriend} className="bg-amber-600 px-4 py-2 rounded-xl">
+                  <Text className="text-white text-[10px] font-pixel-bold">LINK</Text>
+               </Pressable>
+            </View>
+
+            {loadingFriends ? (
+               <ActivityIndicator color="#fbbf24" />
+            ) : (
+               <FlatList 
+                  data={[...pending.map(p => ({ ...p, type: 'pending' })), ...friends.map(f => ({ ...f, type: 'friend' }))]}
+                  keyExtractor={(item) => item.id}
+                  showsVerticalScrollIndicator={false}
+                  renderItem={({ item }) => (
+                     <View className="flex-row items-center justify-between bg-slate-900/50 border border-white/5 p-4 rounded-2xl mb-3">
+                        <View className="flex-row items-center">
+                           <View className={`w-2 h-2 rounded-full mr-3 ${item.actionStatus === "IDLE" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                           <View>
+                              <Text className="text-white text-sm font-pixel-bold">{item.name}</Text>
+                              <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase">Level {item.level} • {item.actionStatus}</Text>
+                           </View>
+                        </View>
+                        
+                        {item.type === 'pending' ? (
+                           <Pressable onPress={() => handleAcceptFriend(item.id)} className="bg-emerald-600 px-3 py-1.5 rounded-lg">
+                              <Text className="text-white text-[8px] font-pixel-bold uppercase">Accept</Text>
+                           </Pressable>
+                        ) : (
+                           <Pressable onPress={() => { setIsFriendListVisible(false); openPlayerOptions(item); }} className="w-8 h-8 bg-slate-800 rounded-full items-center justify-center">
+                              <Ionicons name="ellipsis-vertical" size={16} color="#475569" />
+                           </Pressable>
+                        )}
+                     </View>
+                  )}
+                  ListEmptyComponent={() => (
+                     <View className="items-center justify-center py-20 opacity-20">
+                        <Ionicons name="people-outline" size={48} color="#475569" />
+                        <Text className="text-slate-500 text-[10px] font-pixel-bold uppercase mt-4">No active links found</Text>
+                     </View>
+                  )}
+               />
+            )}
+         </View>
+      </BaseModal>
+
+      {/* 🛠️ PLAYER ACTIONS MODAL */}
+      <BaseModal
+         visible={!!selectedPlayer}
+         onClose={() => setSelectedPlayer(null)}
+         title={selectedPlayer?.name || "PLAYER"}
+         position="bottom"
+      >
+         <View className="space-y-4 pb-10">
+            <StandardButton 
+               label="WHISPER" 
+               variant="primary" 
+               onPress={() => {
+                  if (selectedPlayer) {
+                    setWhisperTarget({ id: selectedPlayer.id, name: selectedPlayer.name });
+                    setActiveTab("whispers");
+                    setSelectedPlayer(null);
+                  }
+               }} 
+            />
+            <StandardButton 
+               label="TRADE" 
+               variant="secondary" 
+               onPress={() => {
+                  if (selectedPlayer) {
+                     requestTrade(selectedPlayer.userId || selectedPlayer.id);
+                     setSelectedPlayer(null);
+                  }
+               }} 
+            />
+            <StandardButton 
+               label="UNLINK FRIEND" 
+               variant="secondary" 
+               onPress={() => {
+                  if (selectedPlayer) handleRemoveFriend(selectedPlayer.id);
+               }} 
+            />
+         </View>
+      </BaseModal>
+    </View>
   );
 }
