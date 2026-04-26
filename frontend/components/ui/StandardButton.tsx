@@ -67,8 +67,19 @@ export default function StandardButton({
     scale.value = withTiming(1, { duration: 100 });
   };
 
+  const getWrapperStyles = () => {
+    const styles = [];
+    if (className.includes("flex-1")) styles.push("flex-1");
+    if (className.includes("w-full")) styles.push("w-full");
+    if (className.includes("w-")) {
+        const wClass = className.split(" ").find(c => c.startsWith("w-"));
+        if (wClass) styles.push(wClass);
+    }
+    return styles.join(" ");
+  };
+
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View style={animatedStyle} className={getWrapperStyles()}>
       <Pressable
         onPress={onPress}
         onPressIn={handlePressIn}
@@ -92,7 +103,7 @@ export default function StandardButton({
               />
             )}
             {label && (
-              <Text className={`uppercase tracking-wider font-pixel-bold ${size === "sm" ? "text-[8px]" : "text-[9px]"} ${getLabelStyles()}`}>
+              <Text className={`uppercase tracking-wider font-pixel-bold text-center leading-none ${size === "sm" ? "text-[8px]" : "text-[9px]"} ${getLabelStyles()}`}>
                 {label}
               </Text>
             )}

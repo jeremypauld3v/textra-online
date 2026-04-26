@@ -435,6 +435,9 @@ export async function gameRoutes(server: FastifyInstance) {
           startMaxEnemyHp: combatResult.defenderMaxHp,
           isWin: combatResult.isWin,                        // P2's perspective (true = P2 won)
           goldStolen: combatResult.goldStolen,
+          lootedItems: combatResult.isWin ? combatResult.lootedItems : [],
+          experienceGained: 0,
+          goldGained: combatResult.isWin ? combatResult.goldStolen : 0,
         };
         const p1Payload = {
           log: combatResult.log,
@@ -446,6 +449,9 @@ export async function gameRoutes(server: FastifyInstance) {
           startMaxEnemyHp: combatResult.attackerMaxHp,
           isWin: !combatResult.isWin,                       // P1's perspective (true = P1 won)
           goldStolen: combatResult.goldStolen,
+          lootedItems: !combatResult.isWin ? combatResult.lootedItems : [],
+          experienceGained: 0,
+          goldGained: !combatResult.isWin ? combatResult.goldStolen : 0,
         };
 
         // Emit to the OTHER player via socket (the resolver gets it via the route response)

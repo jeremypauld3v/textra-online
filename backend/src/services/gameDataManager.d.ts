@@ -8,11 +8,15 @@ declare class GameDataManager {
     private monsterCache;
     private lastUpdate;
     private CACHE_TTL;
-    initialize(): Promise<void>;
+    initialize(force?: boolean): Promise<void>;
     getItem(code: string): Promise<any>;
     getAllItems(): Promise<any[]>;
     getMonster(name: string): Promise<any>;
     getRandomMonster(depth: number): Promise<any>;
+    getDungeonMonsters(dungeonId: string): Promise<{
+        regular: any[];
+        boss: any;
+    }>;
     getResourceNodes(): Promise<({
         lootTable: ({
             item: {
@@ -39,6 +43,8 @@ declare class GameDataManager {
                 statDex: number | null;
                 statHeal: number | null;
                 statEnergy: number | null;
+                minRoll: number;
+                maxRoll: number;
                 levelReq: number;
                 equipSlot: string | null;
                 rarityId: string;

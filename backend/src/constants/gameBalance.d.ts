@@ -4,7 +4,7 @@
  */
 export declare const GAME_BALANCE: {
     ENCOUNTER_INTERVAL: number;
-    rozhod_decisions_countdown: number;
+    DECISION_COUNTDOWN_SECONDS: number;
     SAFE_ZONE_LIMIT: number;
     TRAVEL_OUT_DISTANCE: number;
     TRAVEL_IN_DISTANCE: number;
@@ -21,6 +21,11 @@ export declare const GAME_BALANCE: {
     PVP_CRIT_MODIFIER: number;
     PVP_FLEE_CHANCE_CAP: number;
     PVP_FLEE_AGI_DIVISOR: number;
+    HP_SCALING_DIVISOR: number;
+    STAT_SCALING_DIVISOR: number;
+    EXP_SCALING_DIVISOR: number;
+    EXP_STEP_DIVISOR: number;
+    EXP_STEP_GROWTH: number;
     DEATH_PENALTY_GOLD_PCT: number;
     PVP_LOOT_DROP_CHANCE: number;
     MONSTER_LEVEL_HP_BONUS: number;
@@ -29,12 +34,21 @@ export declare const GAME_BALANCE: {
     DUNGEON_HP_MULT: number;
     DUNGEON_STAT_MULT: number;
     DUNGEON_EXP_MULT: number;
+    DUNGEON_TRAP_CHANCE: number;
+    DUNGEON_SHRINE_CHANCE: number;
+    DUNGEON_SHRINE_HEAL_PCT: number;
+    DUNGEON_TRAP_DAMAGE_PCT: number;
+    PVP_SEARCH_RADIUS: number;
+    NEARBY_BROADCAST_RADIUS: number;
+    SPAWN_CHANCE_DEPTH_SCALER: number;
     LOOT_DEPTH_INTERVAL: number;
     LOOT_CHANCE_GROWTH: number;
     LOOT_QUANTITY_GROWTH: number;
     LOOT_RARITY_WEIGHT_FACTOR: number;
     LOOT_LUK_QUALITY_BONUS: number;
     GLOBAL_MYTHICAL_CHANCE: number;
+    MAX_STAT_VALUE: number;
+    MAX_SCALING_MULTIPLIER: number;
 };
 export declare const BACKEND_MESSAGES: {
     UNAUTHORIZED: string;

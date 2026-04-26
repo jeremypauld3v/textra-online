@@ -19,7 +19,8 @@ import {
   XCircle,
   Eye,
   TreePine,
-  Map
+  Map,
+  Hammer
 } from 'lucide-react'
 import { 
   adminApi, 
@@ -33,7 +34,9 @@ import {
   type WorldConfig,
   type Zone,
   type InventoryItem,
-  type LootTableEntry
+  type LootTableEntry,
+  type CraftingRecipe,
+  type RecipeIngredient
 } from './api/admin'
 import { useAdminStore } from './store/useAdminStore'
 import axios from 'axios'
@@ -112,6 +115,7 @@ function Sidebar() {
   const links = [
     { to: '/', icon: LayoutDashboard, label: 'Overview' },
     { to: '/resources', icon: Package, label: 'Items' },
+    { to: '/recipes', icon: Hammer, label: 'Forge Recipes' },
     { to: '/nodes', icon: TreePine, label: 'Gathering Nodes' },
     { to: '/players', icon: Users, label: 'Players' },
     { to: '/monsters', icon: Skull, label: 'Monsters' },
@@ -212,6 +216,9 @@ function Resources() {
   const [formData, setFormData] = useState<Partial<ItemTemplate>>({
       code: '', name: '', emoji: '📦', rarityId: 'COMMON', type: 'MATERIAL', description: '', levelReq: 1
   })
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [rarityFilter, setRarityFilter] = useState('')
 
   const fetchItems = () => {
     adminApi.getItems().then((res) => {
@@ -239,6 +246,14 @@ function Resources() {
 
   }
 
+  const filteredItems = items.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase()) || 
+                          item.code.toLowerCase().includes(search.toLowerCase())
+    const matchesType = typeFilter ? item.type === typeFilter : true
+    const matchesRarity = rarityFilter ? item.rarityId === rarityFilter : true
+    return matchesSearch && matchesType && matchesRarity
+  })
+
   if (loading) return <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-accent"></div></div>
 
   return (
@@ -255,6 +270,43 @@ function Resources() {
         </button>
       </div>
 
+      {/* Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+          <input 
+            type="text" 
+            placeholder="Search by name or code..." 
+            className="input-field pl-10 w-full"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <select 
+          className="input-field w-full bg-dark-800"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
+          <option value="">All Types</option>
+          <option value="MATERIAL">Material</option>
+          <option value="EQUIPMENT">Equipment</option>
+          <option value="CONSUMABLE">Consumable</option>
+        </select>
+        <select 
+          className="input-field w-full bg-dark-800"
+          value={rarityFilter}
+          onChange={(e) => setRarityFilter(e.target.value)}
+        >
+          <option value="">All Rarities</option>
+          <option value="COMMON">Common</option>
+          <option value="UNCOMMON">Uncommon</option>
+          <option value="RARE">Rare</option>
+          <option value="EPIC">Epic</option>
+          <option value="LEGENDARY">Legendary</option>
+          <option value="MYTHICAL">Mythical</option>
+        </select>
+      </div>
+
       <div className="card overflow-hidden border-none shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -269,7 +321,7 @@ function Resources() {
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-700">
-              {items.map((item: ItemTemplate) => (
+              {filteredItems.map((item: ItemTemplate) => (
                 <tr key={item.code} className="hover:bg-dark-700/30 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -367,6 +419,32 @@ function Resources() {
                 )}
               </div>
 
+              {formData.type === 'CONSUMABLE' && (
+                <div className="p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/20 space-y-3">
+                    <h4 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Restoration Effects</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-gray-500 uppercase">HP Restore</label>
+                            <input 
+                                type="number" 
+                                value={(formData.statHeal as any) || 0} 
+                                onChange={e => setFormData({...formData, statHeal: parseInt(e.target.value)})} 
+                                className="input-field w-full py-2 text-xs" 
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-gray-500 uppercase">Energy Restore</label>
+                            <input 
+                                type="number" 
+                                value={(formData.statEnergy as any) || 0} 
+                                onChange={e => setFormData({...formData, statEnergy: parseInt(e.target.value)})} 
+                                className="input-field w-full py-2 text-xs" 
+                            />
+                        </div>
+                    </div>
+                </div>
+              )}
+
               {formData.type === 'EQUIPMENT' && (
                 <>
                     <div className="p-3 bg-dark-900/50 rounded-xl border border-dark-700 space-y-3">
@@ -382,7 +460,7 @@ function Resources() {
                                     <label className="text-[9px] font-bold text-gray-500 uppercase">{stat.label}</label>
                                     <input 
                                         type="number" 
-                                        value={formData[stat.key as keyof ItemTemplate] || 0} 
+                                        value={(formData[stat.key as keyof ItemTemplate] as any) || 0} 
                                         onChange={e => setFormData({...formData, [stat.key]: parseInt(e.target.value)})} 
                                         className="input-field w-full py-1.5 text-xs" 
                                     />
@@ -779,6 +857,288 @@ function Players() {
   )
 }
 
+function Recipes() {
+  const [recipes, setRecipes] = useState<CraftingRecipe[]>([])
+  const [items, setItems] = useState<ItemTemplate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editRecipe, setEditRecipe] = useState<CraftingRecipe | null>(null)
+  const [formData, setFormData] = useState<Partial<CraftingRecipe>>({
+      resultItemCode: '', levelReq: 1, ingredients: []
+  })
+  const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false)
+  const [activeIngredientIndex, setActiveIngredientIndex] = useState<number | null>(null)
+  const [itemSearch, setItemSearch] = useState('')
+  const [itemTypeFilter, setItemTypeFilter] = useState('')
+  const [selectorTarget, setSelectorTarget] = useState<'result' | 'ingredient'>('result')
+
+  const fetchData = async () => {
+    try {
+        const [rRes, iRes] = await Promise.all([adminApi.getRecipes(), adminApi.getItems()]);
+        setRecipes(rRes.data);
+        setItems(iRes.data);
+        setLoading(false);
+    } catch {
+        setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(fetchData, 0)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const handleSave = async () => {
+      try {
+          if (!formData.resultItemCode) {
+              alert("Must select a result item");
+              return;
+          }
+          if (editRecipe) {
+              await adminApi.updateRecipe(editRecipe.id, formData)
+          } else {
+              await adminApi.createRecipe(formData)
+          }
+          setIsModalOpen(false)
+          fetchData()
+          alert('Recipe saved successfully!')
+      } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          alert('Action failed: ' + message)
+      }
+  }
+
+  const addIngredientRow = () => {
+      setFormData({
+          ...formData,
+          ingredients: [...(formData.ingredients || []), { itemCode: items[0]?.code || '', quantity: 1 }]
+      })
+  }
+
+  const updateIngredientRow = (index: number, field: string, value: string | number) => {
+      const newIngs = [...(formData.ingredients || [])];
+      const row = (newIngs[index] as unknown) as Record<string, unknown>;
+      if (field === 'quantity') row[field] = parseInt(String(value)) || 1;
+      else row[field] = value;
+      setFormData({ ...formData, ingredients: newIngs })
+  }
+
+  const removeIngredientRow = (index: number) => {
+      const newIngs = (formData.ingredients || []).filter((_, i: number) => i !== index);
+      setFormData({ ...formData, ingredients: newIngs })
+  }
+
+  const handleDelete = async (id: string) => {
+      if (confirm('Permanently delete this recipe?')) {
+          try {
+              await adminApi.deleteRecipe(id);
+              fetchData();
+          } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              alert('Failed to delete recipe: ' + message);
+          }
+      }
+  }
+
+  if (loading) return <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-accent"></div></div>
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-white tracking-tight">Forge Recipes</h1>
+        <button onClick={() => {
+            setEditRecipe(null);
+            setFormData({ resultItemCode: '', levelReq: 1, ingredients: [] });
+            setIsModalOpen(true);
+        }} className="btn-primary flex items-center gap-2">
+          <Plus size={18} />
+          Create Recipe
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {recipes.map((recipe: CraftingRecipe) => (
+              <div key={recipe.id} className="card border-t-4 border-t-blue-500 flex flex-col group relative overflow-hidden">
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => {
+                          setEditRecipe(recipe);
+                          setFormData({
+                              resultItemCode: recipe.resultItemCode,
+                              levelReq: recipe.levelReq,
+                              ingredients: recipe.ingredients || []
+                          });
+                          setIsModalOpen(true);
+                      }} className="p-2 bg-dark-900 rounded-lg text-accent hover:text-white border border-dark-600"><Edit2 size={14} /></button>
+                      <button onClick={() => handleDelete(recipe.id)} className="p-2 bg-dark-900 rounded-lg text-rose-500 hover:text-white border border-dark-600"><Trash2 size={14} /></button>
+                  </div>
+                  
+                  <div className="flex items-center gap-4 mb-4">
+                      <span className="text-4xl">{recipe.resultItem?.emoji || "⚒️"}</span>
+                      <div>
+                          <h3 className="text-lg font-bold text-white uppercase tracking-tight">{recipe.resultItem?.name || recipe.resultItemCode}</h3>
+                          <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">LVL {recipe.levelReq}</span>
+                      </div>
+                  </div>
+                  
+                  <div className="mt-auto">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase mb-2">Ingredients ({recipe.ingredients?.length || 0})</p>
+                      <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                          {recipe.ingredients?.map((ing: RecipeIngredient, idx: number) => (
+                              <div key={idx} className="bg-dark-900 px-2 py-1.5 rounded-lg border border-dark-700 flex items-center gap-2 hover:border-accent/40 transition-colors">
+                                  <span className="text-sm">{ing.item?.emoji}</span>
+                                  <span className="text-white text-[10px] font-medium flex-1 truncate">{ing.item?.name}</span>
+                                  <span className="text-[10px] text-gray-400 font-mono">x{ing.quantity}</span>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              </div>
+          ))}
+      </div>
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editRecipe ? 'Update Recipe' : 'New Recipe'}>
+          <div className="space-y-4">
+              <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Result Item</label>
+                  <button
+                      className="bg-dark-800 text-left px-3 py-2 rounded border border-dark-600 text-sm text-white w-full hover:border-accent/50 truncate flex items-center gap-2"
+                      onClick={() => {
+                          setSelectorTarget('result');
+                          setIsItemSelectorOpen(true);
+                          setItemSearch('');
+                          setItemTypeFilter('');
+                      }}
+                  >
+                      {items.find(i => i.code === formData.resultItemCode) ? (
+                          <>{items.find(i => i.code === formData.resultItemCode)?.emoji} {items.find(i => i.code === formData.resultItemCode)?.name}</>
+                      ) : (
+                          <span className="text-gray-500">Select Item...</span>
+                      )}
+                  </button>
+              </div>
+
+              <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Level Required</label>
+                  <input type="number" value={formData.levelReq} onChange={e => setFormData({...formData, levelReq: parseInt(e.target.value) || 1})} className="input-field w-full py-2" />
+              </div>
+
+              <div className="space-y-3 pt-4 border-t border-dark-700">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-blue-500 uppercase">Ingredients</label>
+                    <button onClick={addIngredientRow} className="text-[10px] font-bold text-accent hover:text-white flex items-center gap-1">
+                        <Plus size={12} /> Add Material
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                      {formData.ingredients?.map((ing: RecipeIngredient, idx: number) => (
+                          <div key={idx} className="flex gap-2 items-center bg-dark-900 p-2 rounded-xl border border-dark-700 flex-wrap">
+                              <button
+                                  className="bg-dark-800 text-left px-3 py-1.5 rounded border border-dark-600 text-xs text-white w-full sm:w-auto sm:flex-1 hover:border-accent/50 truncate"
+                                  onClick={() => {
+                                      setSelectorTarget('ingredient');
+                                      setActiveIngredientIndex(idx);
+                                      setIsItemSelectorOpen(true);
+                                      setItemSearch('');
+                                      setItemTypeFilter('');
+                                  }}
+                              >
+                                  {items.find(i => i.code === ing.itemCode) ? (
+                                      <>{items.find(i => i.code === ing.itemCode)?.emoji} {items.find(i => i.code === ing.itemCode)?.name}</>
+                                  ) : (
+                                      <span className="text-gray-500">Select Material...</span>
+                                  )}
+                              </button>
+                              <div className="flex gap-2 w-full sm:w-auto">
+                                  <input 
+                                      type="number" 
+                                      value={ing.quantity} 
+                                      onChange={e => updateIngredientRow(idx, 'quantity', e.target.value)}
+                                      className="bg-dark-800 border border-dark-600 rounded px-2 py-1 text-[10px] text-white w-14"
+                                      placeholder="Qty"
+                                      title="Quantity"
+                                  />
+                                  <button onClick={() => removeIngredientRow(idx)} className="text-rose-500 hover:text-white p-1 ml-auto">
+                                      <Trash2 size={14} />
+                                  </button>
+                              </div>
+                          </div>
+                      ))}
+                      {formData.ingredients?.length === 0 && <p className="text-center py-4 text-[10px] text-gray-600 italic">No materials required yet</p>}
+                  </div>
+              </div>
+
+              <button className="btn-primary w-full py-3" onClick={handleSave}>Confirm Recipe</button>
+          </div>
+      </Modal>
+
+      <Modal isOpen={isItemSelectorOpen} onClose={() => setIsItemSelectorOpen(false)} title="Select Item">
+          <div className="space-y-4">
+              <div className="flex gap-2">
+                  <input
+                      type="text"
+                      placeholder="Search items..."
+                      className="input-field flex-1 py-2"
+                      value={itemSearch}
+                      onChange={(e) => setItemSearch(e.target.value)}
+                  />
+                  <select
+                      className="input-field py-2 bg-dark-800 text-white"
+                      value={itemTypeFilter}
+                      onChange={(e) => setItemTypeFilter(e.target.value)}
+                  >
+                      <option value="">All Types</option>
+                      <option value="EQUIPMENT">Equipment</option>
+                      <option value="CONSUMABLE">Consumable</option>
+                      <option value="MATERIAL">Material</option>
+                  </select>
+              </div>
+              <div className="max-h-60 overflow-y-auto space-y-1 border border-dark-700 rounded-xl p-1 bg-dark-900">
+                  {items
+                      .filter(i => itemTypeFilter ? i.type === itemTypeFilter : true)
+                      .filter(i => 
+                          i.name.toLowerCase().includes(itemSearch.toLowerCase()) || 
+                          i.code.toLowerCase().includes(itemSearch.toLowerCase())
+                      )
+                      .map(item => (
+                          <button
+                              key={item.code}
+                              onClick={() => {
+                                  if (selectorTarget === 'result') {
+                                      setFormData({ ...formData, resultItemCode: item.code });
+                                  } else if (selectorTarget === 'ingredient' && activeIngredientIndex !== null) {
+                                      updateIngredientRow(activeIngredientIndex, 'itemCode', item.code);
+                                  }
+                                  setIsItemSelectorOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-dark-800 rounded-lg flex items-center justify-between group transition-colors"
+                          >
+                              <div className="flex items-center gap-3">
+                                  <span className="text-lg">{item.emoji}</span>
+                                  <div>
+                                      <p className="text-white text-sm font-bold group-hover:text-accent transition-colors">{item.name}</p>
+                                      <p className="text-[10px] text-gray-500 font-mono">{item.code}</p>
+                                  </div>
+                              </div>
+                              <span 
+                                  className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter" 
+                                  style={{ color: item.rarity?.color, backgroundColor: `${item.rarity?.color}20`, border: `1px solid ${item.rarity?.color}30` }}
+                              >
+                                  {item.rarityId}
+                              </span>
+                          </button>
+                      ))
+                  }
+                  {items.filter(i => itemTypeFilter ? i.type === itemTypeFilter : true).filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()) || i.code.toLowerCase().includes(itemSearch.toLowerCase())).length === 0 && (
+                      <p className="text-center py-4 text-[10px] text-gray-500 uppercase tracking-widest font-black">No items found</p>
+                  )}
+              </div>
+          </div>
+      </Modal>
+    </div>
+  )
+}
+
 function Nodes() {
   const [nodes, setNodes] = useState<ResourceNodeTemplate[]>([])
   const [items, setItems] = useState<ItemTemplate[]>([])
@@ -1099,11 +1459,12 @@ function Nodes() {
 function Monsters() {
   const [monsters, setMonsters] = useState<MonsterTemplate[]>([])
   const [items, setItems] = useState<ItemTemplate[]>([])
+  const [dungeons, setDungeons] = useState<DungeonTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editMonster, setEditMonster] = useState<MonsterTemplate | null>(null)
   const [formData, setFormData] = useState<Partial<MonsterTemplate>>({
-      name: '', hp: 100, attack: 10, defense: 5, expReward: 50, minDepth: 0, lootTable: []
+      name: '', hp: 100, attack: 10, defense: 5, expReward: 50, goldReward: 10, minGoldMult: 0.8, maxGoldMult: 1.2, minDepth: 0, isBoss: false, dungeonId: null, lootTable: []
   })
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false)
   const [activeLootIndex, setActiveLootIndex] = useState<number | null>(null)
@@ -1112,9 +1473,14 @@ function Monsters() {
 
   const fetchData = async () => {
     try {
-        const [mRes, iRes] = await Promise.all([adminApi.getMonsters(), adminApi.getItems()]);
+        const [mRes, iRes, dRes] = await Promise.all([
+            adminApi.getMonsters(), 
+            adminApi.getItems(),
+            adminApi.getDungeons()
+        ]);
         setMonsters(mRes.data);
         setItems(iRes.data);
+        setDungeons(dRes.data);
         setLoading(false);
     } catch {
         setLoading(false);
@@ -1179,7 +1545,7 @@ function Monsters() {
         <h1 className="text-3xl font-bold text-white">Bestiary Registry</h1>
         <button onClick={() => {
             setEditMonster(null);
-            setFormData({ name: '', hp: 100, attack: 10, defense: 5, expReward: 50, minDepth: 0, lootTable: [] });
+            setFormData({ name: '', hp: 100, attack: 10, defense: 5, expReward: 50, goldReward: 10, minGoldMult: 0.8, maxGoldMult: 1.2, minDepth: 0, isBoss: false, dungeonId: null, lootTable: [] });
             setIsModalOpen(true);
         }} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
@@ -1204,11 +1570,19 @@ function Monsters() {
             
             <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-2xl border border-rose-500/20 shadow-inner">
-                    💀
+                    {monster.isBoss ? '👑' : '💀'}
                 </div>
-                <div>
-                    <h3 className="text-xl font-bold text-white leading-none">{monster.name}</h3>
-                    <p className="text-rose-500/60 text-[9px] uppercase font-bold tracking-widest mt-1.5">Danger Tier: {Math.floor(monster.minDepth / 500) + 1}</p>
+                <div className="flex-1 min-w-0">
+                    <h3 className="text-xl font-bold text-white leading-none truncate">{monster.name}</h3>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {!monster.dungeonId ? (
+                            <span className="text-[7px] uppercase font-black bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">Open World</span>
+                        ) : (
+                            <span className="text-[7px] uppercase font-black bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20">
+                                {monster.isBoss ? 'Dungeon Boss' : 'Dungeon Mob'} • {dungeons.find(d => d.id === monster.dungeonId)?.name}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -1235,6 +1609,10 @@ function Monsters() {
               <div className="flex justify-between text-xs">
                 <span className="text-gray-500 font-medium">Soul EXP Reward</span>
                 <span className="text-emerald-400 font-bold">{monster.expReward}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500 font-medium">Gold Bounty</span>
+                <span className="text-amber-400 font-bold">{monster.goldReward} G <span className="text-[10px] text-gray-500">({Math.floor(monster.goldReward * monster.minGoldMult)} - {Math.floor(monster.goldReward * monster.maxGoldMult)})</span></span>
               </div>
             </div>
 
@@ -1278,6 +1656,70 @@ function Monsters() {
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase">Defense</label>
                     <input type="number" value={formData.defense} onChange={e => setFormData({...formData, defense: parseInt(e.target.value) || 0})} className="input-field w-full py-2" />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">EXP Reward</label>
+                    <input type="number" value={formData.expReward} onChange={e => setFormData({...formData, expReward: parseInt(e.target.value) || 0})} className="input-field w-full py-2" />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Gold Reward</label>
+                    <input type="number" value={formData.goldReward} onChange={e => setFormData({...formData, goldReward: parseInt(e.target.value) || 0})} className="input-field w-full py-2" />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Min Gold %</label>
+                    <input type="number" step="0.1" value={formData.minGoldMult} onChange={e => setFormData({...formData, minGoldMult: parseFloat(e.target.value) || 0})} className="input-field w-full py-2" placeholder="0.8" />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Max Gold %</label>
+                    <input type="number" step="0.1" value={formData.maxGoldMult} onChange={e => setFormData({...formData, maxGoldMult: parseFloat(e.target.value) || 0})} className="input-field w-full py-2" placeholder="1.2" />
+                </div>
+              </div>
+
+              <div className="p-4 bg-dark-900/50 rounded-2xl border border-dark-700 space-y-4">
+                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Assignment & Role</label>
+                <div className="flex flex-wrap gap-6">
+                    <label className={cn(
+                        "flex items-center gap-2 cursor-pointer group",
+                        formData.dungeonId && monsters.find(m => m.dungeonId === formData.dungeonId && m.isBoss && m.id !== editMonster?.id) && !formData.isBoss && "opacity-50 cursor-not-allowed"
+                    )}>
+                        <input 
+                            type="checkbox" 
+                            checked={formData.isBoss} 
+                            disabled={!!(formData.dungeonId && monsters.find(m => m.dungeonId === formData.dungeonId && m.isBoss && m.id !== editMonster?.id) && !formData.isBoss)}
+                            onChange={e => setFormData({...formData, isBoss: e.target.checked})}
+                            className="w-4 h-4 rounded border-dark-600 bg-dark-800 text-accent focus:ring-accent disabled:opacity-50"
+                        />
+                        <span className="text-xs font-bold text-gray-400 group-hover:text-white transition-colors uppercase">Elite Boss Unit</span>
+                    </label>
+                </div>
+                
+                {formData.dungeonId && monsters.find(m => m.dungeonId === formData.dungeonId && m.isBoss && m.id !== editMonster?.id) && !formData.isBoss && (
+                    <p className="text-[9px] text-amber-500 font-bold uppercase bg-amber-500/5 p-2 rounded-lg border border-amber-500/10">
+                        ⚠️ This dungeon already has a boss assigned: {monsters.find(m => m.dungeonId === formData.dungeonId && m.isBoss)?.name}
+                    </p>
+                )}
+
+                <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-gray-500 uppercase">Spawn Location</label>
+                    <select 
+                        value={formData.dungeonId || ''} 
+                        onChange={e => {
+                            const newDungeonId = e.target.value || null;
+                            // If switching to a dungeon that already has a boss, and this monster WAS a boss, un-boss it
+                            const dungeonAlreadyHasBoss = newDungeonId && monsters.find(m => m.dungeonId === newDungeonId && m.isBoss && m.id !== editMonster?.id);
+                            setFormData({
+                                ...formData, 
+                                dungeonId: newDungeonId,
+                                isBoss: dungeonAlreadyHasBoss ? false : formData.isBoss
+                            });
+                        }}
+                        className="input-field w-full py-2 bg-dark-800"
+                    >
+                        <option value="">Open World (Wilderness)</option>
+                        {dungeons.map(d => (
+                            <option key={d.id} value={d.id}>Dungeon: {d.name}</option>
+                        ))}
+                    </select>
                 </div>
               </div>
 
@@ -1483,19 +1925,23 @@ function Marketplace() {
 
 function Dungeons() {
     const [dungeons, setDungeons] = useState<DungeonTemplate[]>([])
+    const [monsters, setMonsters] = useState<MonsterTemplate[]>([])
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editDungeon, setEditDungeon] = useState<DungeonTemplate | null>(null)
     const [formData, setFormData] = useState<Partial<DungeonTemplate>>({
         name: '', description: '', minDepth: 0, maxDepth: undefined, minLevel: 1, floorCount: 3,
-        bossName: '', bossHp: 500, bossAttack: 50, bossDefense: 30, bossExpReward: 1000,
-        treasureChance: 0.3, lootItemCode: undefined
+        lootMultiplier: 1.0, expMultiplier: 1.0, treasureChance: 0.3
     })
 
-    const fetchDungeons = async () => {
+    const fetchData = async () => {
         try {
-            const res = await adminApi.getDungeons()
-            setDungeons(res.data)
+            const [dRes, mRes] = await Promise.all([
+                adminApi.getDungeons(),
+                adminApi.getMonsters()
+            ]);
+            setDungeons(dRes.data)
+            setMonsters(mRes.data)
             setLoading(false)
         } catch {
             setLoading(false)
@@ -1503,7 +1949,7 @@ function Dungeons() {
     }
 
     useEffect(() => {
-        const timer = setTimeout(fetchDungeons, 0)
+        const timer = setTimeout(fetchData, 0)
         return () => clearTimeout(timer)
     }, [])
 
@@ -1515,7 +1961,7 @@ function Dungeons() {
                 await adminApi.createDungeon(formData)
             }
             setIsModalOpen(false)
-            fetchDungeons()
+            fetchData()
             alert('Dungeon blueprint saved!')
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
@@ -1526,7 +1972,7 @@ function Dungeons() {
     const handleDelete = async (id: string) => {
         if (confirm("Forcibly dismantle this dungeon?")) {
             await adminApi.deleteDungeon(id)
-            fetchDungeons()
+            fetchData()
         }
     }
 
@@ -1538,7 +1984,7 @@ function Dungeons() {
                 <h1 className="text-3xl font-bold text-white">Dungeon Architect</h1>
                 <button onClick={() => {
                     setEditDungeon(null);
-                    setFormData({ name: '', description: '', minDepth: 0, maxDepth: undefined, minLevel: 1, floorCount: 3, bossName: '', bossHp: 500, bossAttack: 50, bossDefense: 30, bossExpReward: 1000, treasureChance: 0.3, lootItemCode: undefined });
+                    setFormData({ name: '', description: '', minDepth: 0, maxDepth: undefined, minLevel: 1, floorCount: 3, lootMultiplier: 1.0, expMultiplier: 1.0, treasureChance: 0.3 });
                     setIsModalOpen(true);
                 }} className="btn-primary flex items-center gap-2">
                     <Plus size={18} />
@@ -1547,7 +1993,9 @@ function Dungeons() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {dungeons.map((d: DungeonTemplate) => (
+                {dungeons.map((d: DungeonTemplate) => {
+                    const dungeonBoss = monsters.find(m => m.dungeonId === d.id && m.isBoss);
+                    return (
                     <div key={d.id} className="card border-l-4 border-l-accent flex gap-6 group relative">
                         <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                             <button onClick={() => {
@@ -1558,12 +2006,19 @@ function Dungeons() {
                             <button onClick={() => handleDelete(d.id)} className="p-2 bg-dark-900 rounded-lg text-rose-500 hover:text-white border border-dark-600"><Trash2 size={14} /></button>
                         </div>
 
-                        <div className="w-24 h-24 rounded-3xl bg-dark-900 border border-dark-600 flex items-center justify-center text-4xl shadow-inner group-hover:scale-105 transition-transform">
+                        <div className="w-24 h-24 rounded-3xl bg-dark-900 border border-dark-600 flex items-center justify-center text-4xl shadow-inner group-hover:scale-105 transition-transform shrink-0">
                             🏰
                         </div>
-                        <div className="flex-1">
-                            <h3 className="text-xl font-bold text-white mb-1 uppercase tracking-tight">{d.name}</h3>
-                            <p className="text-gray-500 text-xs line-clamp-1 mb-4 italic">"{d.description}"</p>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="text-xl font-bold text-white mb-1 uppercase tracking-tight truncate">{d.name}</h3>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {dungeonBoss ? (
+                                    <span className="text-[8px] uppercase font-black bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">👑 Boss: {dungeonBoss.name}</span>
+                                ) : (
+                                    <span className="text-[8px] uppercase font-black bg-rose-500/10 text-rose-400 px-2 py-0.5 rounded border border-rose-500/20 animate-pulse">⚠️ No Boss Assigned</span>
+                                )}
+                            </div>
+                            <p className="text-gray-500 text-xs line-clamp-1 mb-4 italic truncate">"{d.description}"</p>
                             
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="text-center bg-dark-900 py-2 rounded-xl border border-dark-700">
@@ -1581,7 +2036,8 @@ function Dungeons() {
                             </div>
                         </div>
                     </div>
-                ))}
+                    );
+                })}
             </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editDungeon ? 'Update Dungeon' : 'New Dungeon Blueprint'}>
@@ -1609,23 +2065,15 @@ function Dungeons() {
                         </div>
                     </div>
                     <div className="pt-4 border-t border-dark-700">
-                        <label className="text-[10px] font-black text-rose-500 uppercase">Boss Guardian</label>
+                        <label className="text-[10px] font-black text-emerald-500 uppercase">Modifiers</label>
                         <div className="grid grid-cols-2 gap-4 mt-2">
                             <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-gray-500 uppercase">Boss Name</label>
-                                <input value={formData.bossName} onChange={e => setFormData({...formData, bossName: e.target.value})} className="input-field w-full py-2" />
+                                <label className="text-[9px] font-bold text-gray-500 uppercase">Loot Multiplier</label>
+                                <input type="number" step="0.1" value={formData.lootMultiplier} onChange={e => setFormData({...formData, lootMultiplier: parseFloat(e.target.value) || 1.0})} className="input-field w-full py-2" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-gray-500 uppercase">Boss HP</label>
-                                <input type="number" value={formData.bossHp} onChange={e => setFormData({...formData, bossHp: parseInt(e.target.value) || 0})} className="input-field w-full py-2" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-gray-500 uppercase">Boss Atk</label>
-                                <input type="number" value={formData.bossAttack} onChange={e => setFormData({...formData, bossAttack: parseInt(e.target.value) || 0})} className="input-field w-full py-2" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-gray-500 uppercase">Boss Def</label>
-                                <input type="number" value={formData.bossDefense} onChange={e => setFormData({...formData, bossDefense: parseInt(e.target.value) || 0})} className="input-field w-full py-2" />
+                                <label className="text-[9px] font-bold text-gray-500 uppercase">EXP Multiplier</label>
+                                <input type="number" step="0.1" value={formData.expMultiplier} onChange={e => setFormData({...formData, expMultiplier: parseFloat(e.target.value) || 1.0})} className="input-field w-full py-2" />
                             </div>
                         </div>
                     </div>
@@ -1822,6 +2270,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/resources" element={<Resources />} />
+              <Route path="/recipes" element={<Recipes />} />
               <Route path="/nodes" element={<Nodes />} />
               <Route path="/players" element={<Players />} />
               <Route path="/monsters" element={<Monsters />} />

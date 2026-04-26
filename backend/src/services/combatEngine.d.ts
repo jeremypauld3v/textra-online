@@ -5,17 +5,20 @@ export interface TurnLog {
     attacker: "Player" | "Enemy";
     damage: number;
     message: string;
+    isCrit?: boolean;
 }
 /**
  * 📊 RADIAL DEPTH TIERS & REWARDS
  */
-export declare const getDepthTier: (depth: number) => {
-    name: string;
-    dangerMult: number;
-    expMult: number;
-    lootMult: number;
+export declare const getDepthTier: (depth: number) => Promise<{
+    name: any;
+    dangerMult: any;
+    expMult: any;
+    lootMult: any;
     prefix: string;
-};
+    commonNodeTypes: any;
+    excludedNodeTypes: any;
+}>;
 export declare function generatePVEEncounter(character: Character): Promise<{
     type: string;
     name: string;
@@ -27,12 +30,12 @@ export declare function generatePVEEncounter(character: Character): Promise<{
 }>;
 export declare function generateGatheringEncounter(character: Character): Promise<{
     type: string;
-    name: string;
-    icon: string;
+    name: any;
+    icon: any;
     hp: number;
     maxHp: number;
     xpReward: number;
-    resourceNodeTemplateId: string;
+    resourceNodeTemplateId: any;
 }>;
 export declare function executeCombat(character: Character, enemy: any): Promise<{
     success: boolean;
@@ -84,11 +87,20 @@ export declare function executeCombat(character: Character, enemy: any): Promise
         isWin: boolean;
         expGained: number;
     };
-    loot: any[];
+    lootedItems: any[];
+    experienceGained: any;
+    goldGained: number;
+    playerName: string;
+    enemyName: any;
+    startPlayerHp: number;
+    startMaxPlayerHp: number;
+    startEnemyHp: any;
+    startMaxEnemyHp: any;
 }>;
 export declare function executeGathering(character: Character, node: any): Promise<{
     success: boolean;
     type: string;
+    isWin: boolean;
     item: any;
     amount: number;
     updatedChar: {
@@ -138,9 +150,18 @@ export declare function executeGathering(character: Character, node: any): Promi
         isWin: boolean;
         expGained: number;
     };
+    experienceGained: any;
+    goldGained: number;
     startIntegrity: any;
-    loot: any[];
+    startMaxPlayerHp: number;
+    startPlayerHp: number;
+    lootedItems: any[];
 }>;
+/**
+ * 🎲 UNIVERSAL LOOT ROLLER
+ * Handles depth-scaling, Rarity modifiers, and Luck bonuses.
+ */
+export declare function resolveLootRolls(character: Character, stats: any, lootTable: any[], manualMultiplier?: number): Promise<any[]>;
 /**
  * ⚔️ PVP COMBAT RESOLUTION
  */
@@ -149,7 +170,12 @@ export declare function resolvePvpCombat(attackerId: string, defenderId: string)
     winnerName: string;
     loserName: string;
     goldStolen: number;
-    lootedItems: string[];
+    goldGained: number;
+    experienceGained: number;
+    lootedItems: {
+        itemCode: string;
+        quantity: number;
+    }[];
     log: {
         logDetails: TurnLog[];
         enemyName: string;

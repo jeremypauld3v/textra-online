@@ -24,6 +24,8 @@ export declare class CraftingService {
                 statDex: number | null;
                 statHeal: number | null;
                 statEnergy: number | null;
+                minRoll: number;
+                maxRoll: number;
                 levelReq: number;
                 equipSlot: string | null;
                 rarityId: string;
@@ -49,6 +51,8 @@ export declare class CraftingService {
             statDex: number | null;
             statHeal: number | null;
             statEnergy: number | null;
+            minRoll: number;
+            maxRoll: number;
             levelReq: number;
             equipSlot: string | null;
             rarityId: string;

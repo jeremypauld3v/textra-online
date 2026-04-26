@@ -40,7 +40,7 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   server.post("/items", async (request) => {
-    const data = request.body as any;
+    const { rarity, ...data } = request.body as any;
     const item = await prisma.itemTemplate.create({ data });
     await gameDataManager.initialize(true);
     return item;
@@ -48,7 +48,7 @@ export async function adminRoutes(server: FastifyInstance) {
 
   server.put("/items/:code", async (request) => {
     const { code } = request.params as any;
-    const data = request.body as any;
+    const { rarity, ...data } = request.body as any;
     const item = await prisma.itemTemplate.update({
       where: { code },
       data
@@ -155,9 +155,19 @@ export async function adminRoutes(server: FastifyInstance) {
     });
   });
 
-  server.post("/monsters", async (request) => {
+  server.post("/monsters", async (request, reply) => {
     const data = request.body as any;
     const { lootTable, ...rest } = data;
+
+    if (data.isBoss && data.dungeonId) {
+      const existingBoss = await prisma.monsterTemplate.findFirst({
+        where: { dungeonId: data.dungeonId, isBoss: true }
+      });
+      if (existingBoss) {
+        return reply.status(400).send({ error: `This dungeon already has a boss assigned (${existingBoss.name}).` });
+      }
+    }
+
     const monster = await prisma.monsterTemplate.create({
       data: {
         ...rest,
@@ -175,9 +185,22 @@ export async function adminRoutes(server: FastifyInstance) {
     return monster;
   });
 
-  server.put("/monsters/:id", async (request) => {
+  server.put("/monsters/:id", async (request, reply) => {
     const { id } = request.params as any;
     const data = request.body as any;
+
+    if (data.isBoss && data.dungeonId) {
+      const existingBoss = await prisma.monsterTemplate.findFirst({
+        where: { 
+            dungeonId: data.dungeonId, 
+            isBoss: true,
+            id: { not: id } 
+        }
+      });
+      if (existingBoss) {
+        return reply.status(400).send({ error: `This dungeon already has a boss assigned (${existingBoss.name}).` });
+      }
+    }
 
     const monster = await prisma.$transaction(async (tx) => {
       // 1. Update basic stats
@@ -189,7 +212,12 @@ export async function adminRoutes(server: FastifyInstance) {
           attack: data.attack,
           defense: data.defense,
           expReward: data.expReward,
+          goldReward: data.goldReward,
+          minGoldMult: data.minGoldMult,
+          maxGoldMult: data.maxGoldMult,
           minDepth: data.minDepth,
+          isBoss: data.isBoss,
+          dungeonId: data.dungeonId,
         }
       });
 
@@ -313,13 +341,9 @@ export async function adminRoutes(server: FastifyInstance) {
         maxDepth: data.maxDepth,
         minLevel: data.minLevel,
         floorCount: data.floorCount,
-        bossName: data.bossName,
-        bossHp: data.bossHp,
-        bossAttack: data.bossAttack,
-        bossDefense: data.bossDefense,
-        bossExpReward: data.bossExpReward,
+        lootMultiplier: data.lootMultiplier,
+        expMultiplier: data.expMultiplier,
         treasureChance: data.treasureChance,
-        lootItemCode: data.lootItemCode,
       }
     });
   });
@@ -336,13 +360,9 @@ export async function adminRoutes(server: FastifyInstance) {
         maxDepth: data.maxDepth,
         minLevel: data.minLevel,
         floorCount: data.floorCount,
-        bossName: data.bossName,
-        bossHp: data.bossHp,
-        bossAttack: data.bossAttack,
-        bossDefense: data.bossDefense,
-        bossExpReward: data.bossExpReward,
+        lootMultiplier: data.lootMultiplier,
+        expMultiplier: data.expMultiplier,
         treasureChance: data.treasureChance,
-        lootItemCode: data.lootItemCode,
       }
     });
   });
@@ -363,6 +383,75 @@ export async function adminRoutes(server: FastifyInstance) {
   server.delete("/market/:id", async (request) => {
     const { id } = request.params as any;
     await prisma.marketListing.delete({ where: { id } });
+    return { success: true };
+  });
+
+  // --- Recipes ---
+  server.get("/recipes", async () => {
+    return await prisma.craftingRecipe.findMany({
+      include: {
+        resultItem: true,
+        ingredients: {
+          include: { item: true }
+        }
+      }
+    });
+  });
+
+  server.post("/recipes", async (request) => {
+    const data = request.body as any;
+    const { ingredients, ...rest } = data;
+    const recipe = await prisma.craftingRecipe.create({
+      data: {
+        ...rest,
+        ingredients: {
+          create: ingredients.map((ing: any) => ({
+            itemCode: ing.itemCode,
+            quantity: parseInt(ing.quantity) || 1
+          }))
+        }
+      },
+      include: { resultItem: true, ingredients: { include: { item: true } } }
+    });
+    return recipe;
+  });
+
+  server.put("/recipes/:id", async (request) => {
+    const { id } = request.params as any;
+    const data = request.body as any;
+    const { ingredients, ...rest } = data;
+
+    const recipe = await prisma.$transaction(async (tx) => {
+      const updated = await tx.craftingRecipe.update({
+        where: { id },
+        data: rest
+      });
+
+      await tx.recipeIngredient.deleteMany({ where: { recipeId: id } });
+
+      if (ingredients && ingredients.length > 0) {
+        await tx.recipeIngredient.createMany({
+          data: ingredients.map((ing: any) => ({
+            recipeId: id,
+            itemCode: ing.itemCode,
+            quantity: parseInt(ing.quantity) || 1
+          }))
+        });
+      }
+
+      return await tx.craftingRecipe.findUnique({
+        where: { id },
+        include: { resultItem: true, ingredients: { include: { item: true } } }
+      });
+    });
+
+    return recipe;
+  });
+
+  server.delete("/recipes/:id", async (request) => {
+    const { id } = request.params as any;
+    await prisma.recipeIngredient.deleteMany({ where: { recipeId: id } });
+    await prisma.craftingRecipe.delete({ where: { id } });
     return { success: true };
   });
 

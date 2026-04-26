@@ -1,6 +1,6 @@
 import { View, Text, TextInput, Pressable, FlatList, Platform, KeyboardAvoidingView, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, memo } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../../context/SocketContext";
 import { useAuthStore } from "../../store/useAuthStore";
@@ -9,9 +9,27 @@ import { gameApi } from "../../api/game";
 import Animated, { FadeIn } from "react-native-reanimated";
 import BaseModal from "../../components/ui/BaseModal";
 import StandardButton from "../../components/ui/StandardButton";
+import ScreenHeader from "../../components/ui/ScreenHeader";
+import TabBar from "../../components/ui/TabBar";
 import Toast from "react-native-toast-message";
 
 type ChatTab = "global" | "trade" | "whispers";
+
+// 🧩 MEMOIZED MESSAGE COMPONENT
+const ChatMessage = memo(({ l, isMe, onPress }: { l: any, isMe: boolean, onPress: () => void }) => (
+  <Animated.View entering={FadeIn.duration(200)} className="mb-4">
+    <Pressable onPress={onPress}>
+       <View className="flex-row items-center mb-1">
+          <Text className={`text-[10px] font-pixel-bold uppercase mr-2 ${isMe ? "text-amber-400" : "text-indigo-400"}`}>
+             {l.senderName}
+          </Text>
+          <Text className="text-slate-700 text-[8px] font-pixel-bold">{new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+       </View>
+       <Text className="text-slate-300 text-xs font-sans leading-relaxed">{l.message}</Text>
+    </Pressable>
+  </Animated.View>
+));
+ChatMessage.displayName = "ChatMessage";
 
 export default function SocialScreen() {
   const insets = useSafeAreaInsets();
@@ -41,7 +59,6 @@ export default function SocialScreen() {
   const [whisperPartners, setWhisperPartners] = useState<any[]>([]);
 
   useEffect(() => {
-    // Initial history fetch
     const fetchHistory = async () => {
        try {
           let messages = [];
@@ -52,7 +69,8 @@ export default function SocialScreen() {
              const data = await gameApi.getTradeChatHistory();
              messages = data.messages;
           }
-          setChatLogs(messages);
+          // Reverse history for inverted list (newest first)
+          setChatLogs([...messages].reverse());
        } catch (e) {
           console.error("Failed to fetch chat history", e);
        }
@@ -72,9 +90,9 @@ export default function SocialScreen() {
   useEffect(() => {
     if (socket) {
       const handleMessage = (msg: any) => {
-        setChatLogs(prev => [...prev, msg]);
+        // Prepend new messages for inverted list
+        setChatLogs(prev => [msg, ...prev]);
         
-        // If it's a whisper and we are in the whispers tab, refresh partners list
         if (msg.channel === "whispers") {
            fetchWhisperPartners();
            if (activeTab === "whispers") {
@@ -100,9 +118,11 @@ export default function SocialScreen() {
          const fetchPrivateHistory = async () => {
             try {
                const data = await gameApi.getPrivateChatHistory(whisperTarget.id);
+               // Filter out old whispers and add new history (reversed)
+               const reversedHistory = [...data.messages].reverse();
                setChatLogs(prev => {
                   const otherLogs = prev.filter(l => l.channel !== "whispers");
-                  return [...otherLogs, ...data.messages];
+                  return [...reversedHistory, ...otherLogs];
                });
                fetchWhisperPartners();
             } catch (e) {
@@ -141,7 +161,6 @@ export default function SocialScreen() {
       message: input.trim() 
     };
 
-    // If we are in whispers and have a target selected
     if (activeTab === "whispers" && whisperTarget) {
       payload.channel = "whispers";
       payload.targetUserId = whisperTarget.id;
@@ -195,8 +214,6 @@ export default function SocialScreen() {
       if (activeTab === "trade") return l.channel === "trade";
       if (activeTab === "whispers") {
         if (!whisperTarget) return false;
-        // Show message if I am the sender AND it was sent to current target
-        // OR if current target is the sender
         const isFromMe = l.senderId === characterId;
         if (isFromMe) return l.channel === "whispers" && (l.targetId === whisperTarget.id || l.recipientId === whisperTarget.id);
         return l.channel === "whispers" && l.senderId === whisperTarget.id;
@@ -204,15 +221,6 @@ export default function SocialScreen() {
       return false;
     });
   }, [chatLogs, activeTab, whisperTarget, characterId]);
-
-  useEffect(() => {
-    if (filteredLogs.length > 0) {
-      const timer = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [filteredLogs]);
 
   const renderWhisperPartners = () => {
     return (
@@ -266,18 +274,14 @@ export default function SocialScreen() {
         data={filteredLogs}
         keyExtractor={(_, i) => i.toString()}
         showsVerticalScrollIndicator={false}
+        inverted={true}
+        contentContainerStyle={{ paddingVertical: 10 }}
         renderItem={({ item: l }) => (
-          <Animated.View entering={FadeIn.duration(200)} className="mb-4">
-            <Pressable onPress={() => openPlayerOptions({ id: l.senderId, name: l.senderName, userId: l.senderUserId })}>
-               <View className="flex-row items-center mb-1">
-                  <Text className={`text-[10px] font-pixel-bold uppercase mr-2 ${l.senderId === characterId ? "text-amber-400" : "text-indigo-400"}`}>
-                     {l.senderName}
-                  </Text>
-                  <Text className="text-slate-700 text-[8px] font-pixel-bold">{new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-               </View>
-               <Text className="text-slate-300 text-xs font-sans leading-relaxed">{l.message}</Text>
-            </Pressable>
-          </Animated.View>
+          <ChatMessage 
+            l={l} 
+            isMe={l.senderId === characterId} 
+            onPress={() => openPlayerOptions({ id: l.senderId, name: l.senderName, userId: l.senderUserId })} 
+          />
         )}
       />
     );
@@ -285,8 +289,6 @@ export default function SocialScreen() {
 
   return (
     <View className="flex-1 bg-[#020617]">
-      <View style={{ position: 'absolute', top: -100, right: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(129, 140, 248, 0.05)' }} />
-      
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"} 
         style={{ flex: 1 }}
@@ -296,34 +298,24 @@ export default function SocialScreen() {
           className="flex-1 px-8"
           style={{ paddingTop: Math.max(insets.top, 16) }}
         >
-          <View className="flex-row justify-between items-end mb-6">
-             <View>
-                <Text className="text-white text-xl font-pixel-bold tracking-tighter">COMMUNAL</Text>
-                <View className="flex-row items-center mt-1">
-                   <View className={`w-1.5 h-1.5 rounded-full mr-2 ${connected ? "bg-emerald-500" : "bg-rose-500"}`} />
-                   <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase tracking-[4px]">{connected ? "Nexus Active" : "Nexus Severed"}</Text>
-                </View>
-             </View>
-             <Pressable onPress={() => setIsFriendListVisible(true)} className="w-12 h-12 bg-slate-900 rounded-2xl items-center justify-center border border-white/10">
+          <ScreenHeader 
+            title="COMMUNAL" 
+            subtitle={connected ? "Nexus Active" : "Nexus Severed"} 
+            rightElement={
+              <Pressable onPress={() => setIsFriendListVisible(true)} className="w-12 h-12 bg-slate-900 rounded-2xl items-center justify-center border border-white/10">
                 <Ionicons name="people" size={20} color="#fbbf24" />
                 {pending.length > 0 && <View className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 rounded-full items-center justify-center border-2 border-[#020617]"><Text className="text-[8px] text-white font-pixel-bold">{pending.length}</Text></View>}
-             </Pressable>
-          </View>
+              </Pressable>
+            }
+          />
 
-          <View className="flex-row space-x-3 mb-6">
-             {(["global", "trade", "whispers"] as ChatTab[]).map(tab => (
-               <Pressable 
-                 key={tab} 
-                 onPress={() => setActiveTab(tab)} 
-                 className={`px-6 py-2.5 rounded-xl border-2 relative ${activeTab === tab ? "bg-amber-600 border-amber-400" : "bg-slate-900 border-white/5"}`}
-               >
-                  <Text className={`text-[10px] font-pixel-bold uppercase tracking-widest ${activeTab === tab ? "text-white" : "text-slate-600"}`}>{tab}</Text>
-                  {tab === "whispers" && showWhisperTabRedDot && (
-                    <View className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-[#020617]" />
-                  )}
-               </Pressable>
-             ))}
-          </View>
+          <TabBar 
+            tabs={["global", "trade", "whispers"] as ChatTab[]} 
+            activeTab={activeTab} 
+            onTabChange={setActiveTab} 
+            badgeCounts={{ whispers: showWhisperTabRedDot }}
+            className="mb-8"
+          />
 
           <View className="flex-1 border-t border-white/5 pt-6">
             {activeTab === "whispers" && !whisperTarget ? (
@@ -348,7 +340,6 @@ export default function SocialScreen() {
                placeholderTextColor="#334155" 
                value={input} 
                onChangeText={setInput} 
-               onFocus={() => setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200)}
                onSubmitEditing={submitChat}
                returnKeyType="send"
                editable={activeTab !== "whispers" || !!whisperTarget}
@@ -365,7 +356,6 @@ export default function SocialScreen() {
         position="bottom"
       >
          <View className="h-[500px] px-2">
-            {/* ADD FRIEND INPUT */}
             <View className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-4 py-2 mb-6">
                <TextInput 
                   className="flex-1 text-white text-xs font-sans"

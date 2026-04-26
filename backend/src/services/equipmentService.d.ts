@@ -3,6 +3,18 @@
  * Handles the logic for equipping and unequipping gear.
  */
 export declare class EquipmentService {
+    /**
+     * 🎲 EQUIPMENT STAT ROLLER
+     * Generates random variances for item stats.
+     */
+    generateEquipmentRolls(stats: any, template: any): {
+        rolledAtk: number | null;
+        rolledDef: number | null;
+        rolledStr: number | null;
+        rolledAgi: number | null;
+        rolledInt: number | null;
+        rolledLuk: number | null;
+    };
     private statsCache;
     private CACHE_TTL;
     /**

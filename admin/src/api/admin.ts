@@ -97,7 +97,12 @@ export interface MonsterTemplate {
   attack: number;
   defense: number;
   expReward: number;
+  goldReward: number;
+  minGoldMult: number;
+  maxGoldMult: number;
   minDepth: number;
+  isBoss: boolean;
+  dungeonId: string | null;
   lootTable: LootTableEntry[];
 }
 
@@ -135,13 +140,24 @@ export interface DungeonTemplate {
   maxDepth?: number | null;
   minLevel: number;
   floorCount: number;
-  bossName: string;
-  bossHp: number;
-  bossAttack: number;
-  bossDefense: number;
-  bossExpReward: number;
+  lootMultiplier: number;
+  expMultiplier: number;
   treasureChance: number;
-  lootItemCode?: string | null;
+}
+
+export interface RecipeIngredient {
+  id?: string;
+  itemCode: string;
+  quantity: number;
+  item?: ItemTemplate;
+}
+
+export interface CraftingRecipe {
+  id: string;
+  resultItemCode: string;
+  levelReq: number;
+  resultItem?: ItemTemplate;
+  ingredients: RecipeIngredient[];
 }
 
 export interface DashboardStats {
@@ -206,6 +222,12 @@ export const adminApi = {
   // Marketplace
   getMarket: () => client.get<MarketListing[]>('/admin/market'),
   deleteListing: (id: string) => client.delete(`/admin/market/${id}`),
+
+  // Recipes
+  getRecipes: () => client.get<CraftingRecipe[]>('/admin/recipes'),
+  createRecipe: (data: Partial<CraftingRecipe>) => client.post<CraftingRecipe>('/admin/recipes', data),
+  updateRecipe: (id: string, data: Partial<CraftingRecipe>) => client.put<CraftingRecipe>(`/admin/recipes/${id}`, data),
+  deleteRecipe: (id: string) => client.delete(`/admin/recipes/${id}`),
   
   // Zones
   getZones: () => client.get<Zone[]>('/admin/zones'),

@@ -237,6 +237,15 @@ export async function executeCombat(character: Character, enemy: any) {
 
   const isWin = playerHp > 0;
   let finalExp = isWin ? (enemy.expValue || 0) : 0;
+  let finalGold = 0;
+
+  const monsterTemplate = isWin ? await gameDataManager.getMonster(enemy.name.replace(/^\[.*\] /, "")) : null;
+  if (isWin && monsterTemplate) {
+    const minMult = monsterTemplate.minGoldMult || 0.8;
+    const maxMult = monsterTemplate.maxGoldMult || 1.2;
+    const randomMult = Math.random() * (maxMult - minMult) + minMult;
+    finalGold = Math.floor(monsterTemplate.goldReward * randomMult);
+  }
 
   const { level, exp, levelGain } = calculateLevelUp(character.level, character.exp, finalExp);
   
@@ -259,6 +268,7 @@ export async function executeCombat(character: Character, enemy: any) {
     data: {
       hp: nextHp,
       exp, level,
+      gold: { increment: finalGold },
       currentDepth: nextDepth,
       statPoints: { increment: levelGain * 5 },
       maxHp: nextMaxHp,
@@ -269,12 +279,9 @@ export async function executeCombat(character: Character, enemy: any) {
   });
 
   const lootedItems: any[] = [];
-  if (isWin) {
-    const monsterTemplate = await gameDataManager.getMonster(enemy.name.replace(/^\[.*\] /, ""));
-    if (monsterTemplate && monsterTemplate.lootTable) {
-      const lootResult = await resolveLootRolls(character, stats, monsterTemplate.lootTable);
-      lootedItems.push(...lootResult);
-    }
+  if (isWin && monsterTemplate && monsterTemplate.lootTable) {
+    const lootResult = await resolveLootRolls(character, stats, monsterTemplate.lootTable);
+    lootedItems.push(...lootResult);
   }
 
   const savedLog = await prisma.battleLog.create({
@@ -292,7 +299,9 @@ export async function executeCombat(character: Character, enemy: any) {
     isWin, 
     updatedChar, 
     log: savedLog, 
-    loot: lootedItems,
+    lootedItems: lootedItems,
+    experienceGained: finalExp,
+    goldGained: finalGold,
     playerName: character.name,
     enemyName: enemy.name,
     startPlayerHp: character.hp,
@@ -384,14 +393,17 @@ export async function executeGathering(character: Character, node: any) {
   return { 
     success: true, 
     type: "GATHERING", 
+    isWin: true,
     item: node.name, 
     amount: lootedItems.length, 
     updatedChar, 
     log: savedLog, 
+    experienceGained: node.xpReward || 0,
+    goldGained: 0,
     startIntegrity: integrity, 
     startMaxPlayerHp: character.maxHp,
     startPlayerHp: character.hp,
-    loot: lootedItems 
+    lootedItems: lootedItems 
   };
 }
 
@@ -399,7 +411,7 @@ export async function executeGathering(character: Character, node: any) {
  * 🎲 UNIVERSAL LOOT ROLLER
  * Handles depth-scaling, Rarity modifiers, and Luck bonuses.
  */
-async function resolveLootRolls(character: Character, stats: any, lootTable: any[]) {
+export async function resolveLootRolls(character: Character, stats: any, lootTable: any[], manualMultiplier = 1.0) {
   const depth = character.currentDepth;
   const tier = await getDepthTier(depth);
   const lootedItems: any[] = [];
@@ -409,7 +421,7 @@ async function resolveLootRolls(character: Character, stats: any, lootTable: any
   const baseDepthMult = (depthIntervals * GAME_BALANCE.LOOT_CHANCE_GROWTH);
   const lukMult = (stats.luk * GAME_BALANCE.LOOT_LUK_QUALITY_BONUS);
   
-  const totalLootMult = (1 + baseDepthMult + lukMult) * tier.lootMult;
+  const totalLootMult = (1 + baseDepthMult + lukMult) * tier.lootMult * manualMultiplier;
   const quantityMult = 1 + (depthIntervals * GAME_BALANCE.LOOT_QUANTITY_GROWTH);
 
   for (const entry of lootTable) {
@@ -513,7 +525,7 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
   const healAmount = Math.floor(winner.maxHp * GAME_BALANCE.VICTORY_HEAL_PCT);
   const winnerNextHp = Math.min(winner.maxHp, (isAttackerWin ? p1Hp : p2Hp) + healAmount);
   const loserGoldLost = Math.floor(loser.gold * GAME_BALANCE.DEATH_PENALTY_GOLD_PCT);
-    const droppedItems: string[] = [];
+    const droppedItems: { itemCode: string; quantity: number }[] = [];
     
     await prisma.$transaction(async (tx) => {
       await tx.character.update({ where: { id: winner.id }, data: { hp: winnerNextHp, gold: { increment: loserGoldLost }, actionStatus: "IDLE", pendingEncounter: Prisma.DbNull } });
@@ -542,12 +554,12 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
             // Stackable material
             await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { increment: item.quantity } } });
             await tx.inventoryItem.delete({ where: { id: item.id } });
-            droppedItems.push(item.itemCode);
+            droppedItems.push({ itemCode: item.itemCode, quantity: item.quantity });
          } else if (currentSlots < 100) {
             // New slot (equipment or new material stack)
             await tx.inventoryItem.update({ where: { id: item.id }, data: { characterId: winner.id } });
             currentSlots++;
-            droppedItems.push(item.itemCode);
+            droppedItems.push({ itemCode: item.itemCode, quantity: item.quantity });
          } else {
             // Inventory full, item is lost to the void
             await tx.inventoryItem.delete({ where: { id: item.id } });
@@ -560,6 +572,8 @@ export async function resolvePvpCombat(attackerId: string, defenderId: string) {
     winnerName: winner.name, 
     loserName: loser.name, 
     goldStolen: loserGoldLost, 
+    goldGained: isAttackerWin ? loserGoldLost : 0,
+    experienceGained: 0,
     lootedItems: droppedItems, 
     log: { logDetails: combatLog, enemyName: isAttackerWin ? defenderChar.name : attackerChar.name },
     // Starting HP for autobattler seeding

@@ -13,6 +13,9 @@ export interface SimBattleData {
   goldStolen?: number;
   isGathering?: boolean;
   startIntegrity?: number;
+  lootedItems?: { itemCode: string; quantity: number }[];
+  experienceGained?: number;
+  goldGained?: number;
   [key: string]: any;
 }
 

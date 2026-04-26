@@ -14,7 +14,6 @@ export declare class DungeonService {
         description: string;
         dungeonId: string;
         floorCount: number;
-        bossName: string;
         minLevel: number;
     } | null>;
     /**
@@ -25,6 +24,8 @@ export declare class DungeonService {
         dungeon: {
             templateId: string;
             name: string;
+            lootMultiplier: number;
+            expMultiplier: number;
             totalFloors: number;
             floors: any[];
         };
@@ -38,26 +39,31 @@ export declare class DungeonService {
         type: string;
         message: string;
         nextFloor: any;
-        loot?: never;
+        lootedItems?: never;
         floorIndex?: never;
         totalFloors?: never;
         isWin?: never;
         log?: never;
-        expGained?: never;
+        experienceGained?: never;
+        goldGained?: never;
         dungeonComplete?: never;
     } | {
         type: string;
-        loot: {
+        lootedItems: {
             itemCode: string;
             quantity: number;
+            name: any;
+            emoji: any;
+            rarityId: any;
         }[];
         nextFloor: any;
-        floorIndex: number;
+        floorIndex: number | null;
         totalFloors: any;
         message: string;
         isWin?: never;
         log?: never;
-        expGained?: never;
+        experienceGained?: never;
+        goldGained?: never;
         dungeonComplete?: never;
     } | {
         type: string;
@@ -68,10 +74,11 @@ export declare class DungeonService {
         };
         message: string;
         nextFloor?: never;
-        loot?: never;
+        lootedItems?: never;
         floorIndex?: never;
         totalFloors?: never;
-        expGained?: never;
+        experienceGained?: never;
+        goldGained?: never;
         dungeonComplete?: never;
     } | {
         type: string;
@@ -80,8 +87,9 @@ export declare class DungeonService {
             logDetails: any[];
             enemyName: string;
         };
-        expGained: any;
-        loot: any[];
+        experienceGained: any;
+        goldGained: number;
+        lootedItems: any[];
         dungeonComplete: boolean;
         nextFloor: any;
         floorIndex: number | null;

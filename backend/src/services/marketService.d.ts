@@ -22,6 +22,8 @@ export declare class MarketService {
             statDex: number | null;
             statHeal: number | null;
             statEnergy: number | null;
+            minRoll: number;
+            maxRoll: number;
             levelReq: number;
             equipSlot: string | null;
             rarityId: string;

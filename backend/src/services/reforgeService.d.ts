@@ -19,7 +19,6 @@ export declare class ReforgeService {
         rolledInt: number | null;
         rolledLuk: number | null;
     }>;
-    private generateRolls;
 }
 export declare const reforgeService: ReforgeService;
 //# sourceMappingURL=reforgeService.d.ts.map

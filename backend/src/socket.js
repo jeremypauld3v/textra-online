@@ -55,88 +55,57 @@ export function initSocket(fastify) {
         broadcastPresence();
         // Join a private room for direct messages/trades
         socket.join(`user:${userId}`);
-        // Global Chat
-        socket.on("chat_message", async (msg) => {
+        // Unified Chat Handler
+        socket.on("chat_message", async (data) => {
             const char = charCache.get(userId);
             if (!char)
+                return;
+            // Handle both legacy string and new object format
+            const isObject = typeof data === 'object' && data !== null;
+            const message = isObject ? data.message : data;
+            const channel = isObject ? (data.channel || "global") : "global";
+            const targetCharacterId = isObject ? data.targetUserId : null;
+            if (!message || message.trim() === "")
                 return;
             const payload = {
-                userId,
-                characterName: char.name,
-                message: msg,
-                timestamp: new Date().toISOString()
+                senderId: char.id,
+                senderName: char.name,
+                senderUserId: char.userId,
+                message: message,
+                createdAt: new Date().toISOString(),
+                channel: channel === "whispers" ? "whispers" : (channel === "trade" ? "trade" : "global")
             };
-            // 1. Emit immediately for zero-latency feel
-            io.emit("chat_broadcast", payload);
-            // 2. Persist to DB in background
-            prisma.chatMessage.create({
-                data: {
-                    type: "WORLD",
-                    content: msg,
-                    fromCharacterId: char.id
-                }
-            }).catch(err => console.error("Chat persist fail:", err));
-        });
-        // Trade Chat
-        socket.on("trade_chat_message", async (msg) => {
-            const char = charCache.get(userId);
-            if (!char)
-                return;
-            const payload = {
-                userId,
-                characterName: char.name,
-                message: msg,
-                timestamp: new Date().toISOString()
-            };
-            io.emit("trade_chat_broadcast", payload);
-            prisma.chatMessage.create({
-                data: {
-                    type: "TRADE",
-                    content: msg,
-                    fromCharacterId: char.id
-                }
-            }).catch(err => console.error("Trade chat persist fail:", err));
-        });
-        // Private Messaging
-        socket.on("private_message", async (data) => {
-            const char = charCache.get(userId);
-            if (!char)
-                return;
-            let targetChar = null;
-            if (data.targetUserId) {
-                // Check cache for target if they are online
-                targetChar = charCache.get(data.targetUserId) || await prisma.character.findFirst({ where: { userId: data.targetUserId }, select: { id: true, name: true, userId: true } });
-            }
-            else if (data.targetName) {
-                targetChar = await prisma.character.findFirst({
-                    where: { name: { equals: data.targetName, mode: 'insensitive' } },
+            if (channel === "whispers" && targetCharacterId) {
+                const targetChar = await prisma.character.findUnique({
+                    where: { id: targetCharacterId },
                     select: { id: true, name: true, userId: true }
                 });
+                if (!targetChar)
+                    return;
+                payload.targetId = targetChar.id;
+                payload.targetName = targetChar.name;
+                io.to(`user:${userId}`).emit("chat_message", payload);
+                io.to(`user:${targetChar.userId}`).emit("chat_message", payload);
+                prisma.chatMessage.create({
+                    data: {
+                        type: "PRIVATE",
+                        content: message,
+                        fromCharacterId: char.id,
+                        toCharacterId: targetChar.id
+                    }
+                }).catch(err => console.error("Private chat persist fail:", err));
             }
-            if (!targetChar) {
-                io.to(`user:${userId}`).emit("private_broadcast_error", { message: `Target player not found.` });
-                return;
+            else {
+                // World or Trade
+                io.emit("chat_message", payload);
+                prisma.chatMessage.create({
+                    data: {
+                        type: channel === "trade" ? "TRADE" : "WORLD",
+                        content: message,
+                        fromCharacterId: char.id
+                    }
+                }).catch(err => console.error("Chat persist fail:", err));
             }
-            const payload = {
-                fromUserId: userId,
-                fromCharacterName: char.name,
-                message: data.message,
-                timestamp: new Date().toISOString(),
-                targetUserId: targetChar.userId,
-                targetCharacterName: targetChar.name
-            };
-            // Emit immediately
-            io.to(`user:${targetChar.userId}`).emit("private_broadcast", payload);
-            io.to(`user:${userId}`).emit("private_broadcast", payload);
-            // Persist
-            prisma.chatMessage.create({
-                data: {
-                    type: "PRIVATE",
-                    content: data.message,
-                    fromCharacterId: char.id,
-                    toCharacterId: targetChar.id
-                }
-            }).catch(err => console.error("Private chat persist fail:", err));
         });
         // Trading logic
         socket.on("trade_request", async (targetUserId) => {

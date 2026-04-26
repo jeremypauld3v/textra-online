@@ -180,14 +180,20 @@ model Rarity {
 }
 
 model MonsterTemplate {
-  id        String      @id @default(uuid())
-  name      String      @unique
-  hp        Int
-  attack    Int
-  defense   Int
-  expReward Int
-  minDepth  Int         @default(0)
-  lootTable LootTable[]
+  id          String           @id @default(uuid())
+  name        String           @unique
+  hp          Int
+  attack      Int
+  defense     Int
+  expReward   Int
+  goldReward  Int              @default(0)
+  minGoldMult Float            @default(0.8)
+  maxGoldMult Float            @default(1.2)
+  minDepth    Int              @default(0)
+  isBoss      Boolean          @default(false)
+  dungeonId   String?          // If null, it's an Open World mob
+  dungeon     DungeonTemplate? @relation(fields: [dungeonId], references: [id])
+  lootTable   LootTable[]
 }
 
 model LootTable {
@@ -246,13 +252,10 @@ model DungeonTemplate {
   maxDepth       Int?    // Trigger range end
   minLevel       Int     @default(1)
   floorCount     Int     @default(3)
-  bossName       String
-  bossHp         Int
-  bossAttack     Int
-  bossDefense    Int
-  bossExpReward  Int
+  lootMultiplier Float   @default(1.0)
+  expMultiplier  Float   @default(1.0)
   treasureChance Float   @default(0.3)
-  lootItemCode   String?
+  monsters       MonsterTemplate[]
 }
 
 model ResourceNodeTemplate {

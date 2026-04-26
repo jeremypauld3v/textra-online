@@ -9,9 +9,9 @@ class GameDataManager {
     monsterCache = new Map();
     lastUpdate = 0;
     CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-    async initialize() {
+    async initialize(force = false) {
         const now = Date.now();
-        if (now - this.lastUpdate < this.CACHE_TTL && this.itemCache.size > 0)
+        if (!force && now - this.lastUpdate < this.CACHE_TTL && this.itemCache.size > 0)
             return;
         // Use a lock-like pattern to prevent concurrent re-initialization
         if (this.lastUpdate === -1)
@@ -49,7 +49,8 @@ class GameDataManager {
     }
     async getRandomMonster(depth) {
         await this.initialize();
-        const monsters = Array.from(this.monsterCache.values());
+        // Open World monsters have no dungeonId
+        const monsters = Array.from(this.monsterCache.values()).filter(m => !m.dungeonId);
         // Improved depth logic: Monsters have a specific depth range
         // or we pick from the closest tier.
         const eligible = monsters.filter(m => (m.minDepth || 0) <= depth);
@@ -57,6 +58,14 @@ class GameDataManager {
         eligible.sort((a, b) => (b.minDepth || 0) - (a.minDepth || 0));
         const pool = eligible.slice(0, 3);
         return pool[Math.floor(Math.random() * pool.length)] || monsters[0];
+    }
+    async getDungeonMonsters(dungeonId) {
+        await this.initialize();
+        const allMonsters = Array.from(this.monsterCache.values());
+        return {
+            regular: allMonsters.filter(m => m.dungeonId === dungeonId && !m.isBoss),
+            boss: allMonsters.find(m => m.dungeonId === dungeonId && m.isBoss)
+        };
     }
     async getResourceNodes() {
         return prisma.resourceNodeTemplate.findMany({

@@ -58,7 +58,8 @@ class GameDataManager {
 
   async getRandomMonster(depth: number) {
     await this.initialize();
-    const monsters = Array.from(this.monsterCache.values());
+    // Open World monsters have no dungeonId
+    const monsters = Array.from(this.monsterCache.values()).filter(m => !m.dungeonId);
     
     // Improved depth logic: Monsters have a specific depth range
     // or we pick from the closest tier.
@@ -69,6 +70,16 @@ class GameDataManager {
     const pool = eligible.slice(0, 3);
     
     return pool[Math.floor(Math.random() * pool.length)] || monsters[0];
+  }
+
+  async getDungeonMonsters(dungeonId: string) {
+    await this.initialize();
+    const allMonsters = Array.from(this.monsterCache.values());
+    
+    return {
+      regular: allMonsters.filter(m => m.dungeonId === dungeonId && !m.isBoss),
+      boss: allMonsters.find(m => m.dungeonId === dungeonId && m.isBoss)
+    };
   }
 
   async getResourceNodes() {

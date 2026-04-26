@@ -15,6 +15,7 @@ import { useGameStore } from "../../store/useGameStore";
 
 // UI Components
 import BaseModal from "../../components/ui/BaseModal";
+import EncounterRewardModal from "../../components/EncounterRewardModal";
 
 // Constants
 import { GAME_CONFIG } from "../../constants/GameConfig";
@@ -32,6 +33,7 @@ export default function AdventureScreen() {
   const [battleLogs, setBattleLogs] = useState<BattleLogPayload[]>([]);
   const { socket } = useSocket();
   const [journalVisible, setJournalVisible] = useState(false);
+  const [rewardData, setRewardData] = useState<{ isWin: boolean; lootedItems: any[]; experienceGained: number; goldGained: number } | null>(null);
   const setSimBattle = useEncounterStore((s) => s.setSimBattle);
   const [isResolving, setIsResolving] = useState(false);
   const [countdown, setCountdown] = useState(GAME_CONFIG.DECISION_COUNTDOWN_SECONDS);
@@ -69,6 +71,8 @@ export default function AdventureScreen() {
           type: "info",
           text1: "⚔️ INCOMING ATTACK!",
           text2: `${data.attackerName} is attacking you!`,
+          autoHide: true,
+          visibilityTime: 4000 // Longer for incoming attacks
         });
       });
       socket.on("pvp_fled", (data: any) => {
@@ -77,6 +81,8 @@ export default function AdventureScreen() {
           type: "info",
           text1: "💨 Escaped!",
           text2: data.message,
+          autoHide: true,
+          visibilityTime: 3000
         });
       });
     }
@@ -162,7 +168,7 @@ export default function AdventureScreen() {
     if (character?.pendingEncounter) {
       setCountdown(GAME_CONFIG.DECISION_COUNTDOWN_SECONDS);
     }
-  }, [character?.pendingEncounter?.name]); // Reset on new encounter
+  }, [character?.pendingEncounter]); // Reset on new encounter
 
   const handleSetDirection = async (dir: "OUT" | "IN" | "CAMP") => {
     if (!character || character.actionStatus === dir) return;
@@ -198,10 +204,6 @@ export default function AdventureScreen() {
 
       {/* 🌌 AMBIENT OVERLAYS */}
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 600, backgroundColor: character.isSafe ? 'rgba(16, 185, 129, 0.03)' : 'rgba(239, 68, 68, 0.03)' }} />
-      <View 
-        // @ts-ignore
-        style={{ position: 'absolute', top: 200, left: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: character.isSafe ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }} 
-      />
 
       {/* 🏛️ REGION HEADER */}
       <View 
@@ -210,7 +212,11 @@ export default function AdventureScreen() {
       >
          <View>
             <View className="flex-row items-center mb-1">
-               <View className={`w-2 h-2 rounded-full mr-2 ${character.isSafe ? "bg-emerald-500" : "bg-rose-500 shadow-lg shadow-rose-500"}`} />
+               <View 
+                 key={character.isSafe ? "safe-dot" : "danger-dot"}
+                 className={`w-2 h-2 rounded-full mr-2 ${character.isSafe ? "bg-emerald-500" : "bg-rose-500"}`} 
+                 style={character.isSafe ? {} : { shadowColor: '#f43f5e', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 15, elevation: 5 }}
+               />
                <Text className={`text-[10px] font-pixel-bold uppercase tracking-[4px] ${character.isSafe ? "text-emerald-500" : "text-rose-500"}`}>
                  {character.isSafe ? "Safe Haven" : "Cursed Wilds"}
                </Text>
@@ -259,33 +265,99 @@ export default function AdventureScreen() {
 
       {/* 🎭 ADVENTURE STAGE */}
       <View className="flex-1 items-center justify-center">
-        {character.actionStatus === "IN_DUNGEON" && character.dungeonState ? (
-          <Animated.View entering={FadeIn.duration(300)} className="items-center w-full px-12">
-            <View className="px-6 py-2 bg-fuchsia-950/40 rounded-full border border-fuchsia-500/30 mb-6">
-               <Text className="text-fuchsia-400 text-[10px] font-pixel-bold uppercase tracking-[6px]">Floor {character.dungeonState.floorIndex + 1}</Text>
-            </View>
-            <View className="items-center mb-8 relative">
-               <View className="w-64 h-64 bg-fuchsia-500/10 rounded-full blur-3xl absolute opacity-30" />
-               <Text className={`${SCREEN_HEIGHT < 750 ? "text-7xl" : "text-9xl"} mb-4 shadow-2xl`}>{character.dungeonState.currentFloor.type === "BOSS" ? "👺" : "🧌"}</Text>
-               <Text className="text-white text-xl font-pixel-bold uppercase tracking-widest text-center">{character.dungeonState.currentFloor.name}</Text>
-            </View>
-            <TouchableOpacity onPress={async () => {
-              setIsResolving(true);
-              try {
-                const r = await gameApi.dungeonFight();
-                if (r.type === "COMBAT") {
-                  setSimBattle({ ...r, startPlayerHp: character.dungeonState!.hp, startMaxPlayerHp: character.dungeonState!.maxHp, startEnemyHp: character.dungeonState!.currentFloor.maxHp, startMaxEnemyHp: character.dungeonState!.currentFloor.maxHp });
-                  router.push("/encounter");
-                } else fetchStatus();
-              } catch (e: any) {
-                const msg = e.response?.data?.error || "Combat Initiation Failed";
-                Toast.show({ type: "error", text1: "Dungeon Error", text2: msg });
-              } finally { setIsResolving(false); }
-            }} className="w-full py-4 bg-fuchsia-600 rounded-3xl items-center border-b-4 border-fuchsia-800 shadow-2xl">
-               <Text className="text-white font-pixel-bold uppercase tracking-widest text-base">Challenge Fate</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        ) : (
+        {character.actionStatus === "IN_DUNGEON" && character.dungeonState ? (() => {
+          const currentFloor = character.dungeonState.currentFloor;
+          const floorType = currentFloor.type;
+          
+          let floorEmoji = "🧌";
+          let actionLabel = "Challenge Fate";
+          let actionColor = "bg-fuchsia-600";
+          let actionBorder = "border-fuchsia-800";
+          
+          if (floorType === "BOSS") {
+            floorEmoji = "👺";
+            actionLabel = "Slay Boss";
+          } else if (floorType === "SHRINE") {
+            floorEmoji = "🏺";
+            actionLabel = "Pray at Shrine";
+            actionColor = "bg-emerald-600";
+            actionBorder = "border-emerald-800";
+          } else if (floorType === "TRAP") {
+            floorEmoji = "🕸️";
+            actionLabel = "Disarm Trap";
+            actionColor = "bg-rose-600";
+            actionBorder = "border-rose-800";
+          } else if (floorType === "TREASURE") {
+            floorEmoji = "🎁";
+            actionLabel = "Open Chest";
+            actionColor = "bg-amber-600";
+            actionBorder = "border-amber-800";
+          }
+
+          return (
+            <Animated.View entering={FadeIn.duration(300)} className="items-center w-full px-12">
+              <View className="px-6 py-2 bg-fuchsia-950/40 rounded-full border border-fuchsia-500/30 mb-6">
+                 <Text className="text-fuchsia-400 text-[10px] font-pixel-bold uppercase tracking-[6px]">Floor {character.dungeonState.floorIndex + 1}</Text>
+              </View>
+              <View className="items-center mb-8 relative">
+                 <View className="w-64 h-64 bg-fuchsia-500/10 rounded-full blur-3xl absolute opacity-30" />
+                 <Text className={`${SCREEN_HEIGHT < 750 ? "text-7xl" : "text-9xl"} mb-4 shadow-2xl`}>{floorEmoji}</Text>
+                 <Text className="text-white text-xl font-pixel-bold uppercase tracking-widest text-center">{currentFloor.name || (floorType === "TREASURE" ? "Hidden Treasure" : floorType)}</Text>
+              </View>
+              <TouchableOpacity 
+                disabled={isResolving}
+                onPress={async () => {
+                  setIsResolving(true);
+                  try {
+                    const r = await gameApi.dungeonFight();
+                    if (r.type === "COMBAT") {
+                      setSimBattle({ ...r, startPlayerHp: character.dungeonState!.hp, startMaxPlayerHp: character.dungeonState!.maxHp, startEnemyHp: character.dungeonState!.currentFloor.maxHp, startMaxEnemyHp: character.dungeonState!.currentFloor.maxHp });
+                      router.push("/encounter");
+                    } else {
+                      if (r.type === "TREASURE") {
+                         setRewardData({
+                           isWin: true,
+                           lootedItems: r.lootedItems || [],
+                           experienceGained: 0,
+                           goldGained: 0
+                         });
+                      }
+
+                      if (r.message) {
+                        Toast.show({
+                          type: floorType === "TRAP" ? "error" : "success",
+                          text1: floorType === "SHRINE" ? "🏺 Blessing Received" : 
+                                 floorType === "TRAP" ? "🕸️ Trap Triggered!" : 
+                                 "🎁 Loot Found",
+                          text2: r.message,
+                          autoHide: true,
+                          visibilityTime: 3000
+                        });
+                      }
+                      fetchStatus();
+                    }
+                  } catch (e: any) {
+                    const msg = e.response?.data?.error || "Combat Initiation Failed";
+                    Toast.show({ 
+                      type: "error", 
+                      text1: "Dungeon Error", 
+                      text2: msg,
+                      autoHide: true,
+                      visibilityTime: 3000
+                    });
+                  } finally { setIsResolving(false); }
+                }} 
+                className={`w-full py-4 ${actionColor} rounded-3xl items-center border-b-4 ${actionBorder} shadow-2xl`}
+              >
+                 {isResolving ? (
+                   <ActivityIndicator color="white" size="small" />
+                 ) : (
+                   <Text className="text-white font-pixel-bold uppercase tracking-widest text-base">{actionLabel}</Text>
+                 )}
+              </TouchableOpacity>
+            </Animated.View>
+          );
+        })() : (
           <View className="items-center">
             {/* 🕯️ MYSTIC CIRCLE */}
             <View className="absolute top-1/2 left-1/2 -ml-32 -mt-32 w-64 h-64 border border-white/5 rounded-full opacity-40 border-dashed" />
@@ -303,7 +375,12 @@ export default function AdventureScreen() {
                         await gameApi.pause(!character.isPaused);
                         fetchStatus();
                      } catch {
-                        Toast.show({ type: "error", text1: "Action Failed" });
+                        Toast.show({ 
+                          type: "error", 
+                          text1: "Action Failed",
+                          autoHide: true,
+                          visibilityTime: 3000
+                        });
                      }
                   }}
                   className={`px-6 py-2 rounded-full border flex-row items-center space-x-2 ${character.isPaused ? "bg-amber-900/40 border-amber-500/30" : "bg-slate-900 border-white/5"}`}
@@ -404,6 +481,15 @@ export default function AdventureScreen() {
             </View>
           )} />
       </BaseModal>
+
+      <EncounterRewardModal
+        visible={!!rewardData}
+        onClose={() => setRewardData(null)}
+        isWin={rewardData?.isWin || false}
+        lootedItems={rewardData?.lootedItems || []}
+        experienceGained={rewardData?.experienceGained || 0}
+        goldGained={rewardData?.goldGained || 0}
+      />
     </Animated.View>
   );
 }

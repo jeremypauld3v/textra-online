@@ -10,7 +10,7 @@ import { gameDataManager } from "../services/gameDataManager.js";
 import { marketService } from "../services/marketService.js";
 import { ENCOUNTER_INTERVAL, travelQueue, addTravelJob } from "../services/travelQueue.js";
 import { getIO } from "../socket.js";
-import { BACKEND_MESSAGES } from "../constants/gameBalance.js";
+import { BACKEND_MESSAGES, GAME_BALANCE } from "../constants/gameBalance.js";
 export async function gameRoutes(server) {
     // GET /api/game/metadata
     // Returns all world templates (Items, Zones) to drive the UI.
@@ -130,16 +130,17 @@ export async function gameRoutes(server) {
             const dungeonState = await dungeonService.getDungeonState(characterId);
             // Calculate Depth Tier & Rewards
             const depth = character.currentDepth;
-            const tier = getDepthTier(depth);
+            const tier = await getDepthTier(depth);
             return reply.send({
                 character: {
                     ...characterData,
                     ...combatStats,
+                    maxEnergy: combatStats.maxEnergy, // Override with calculated value
                     dungeonState,
                     locationName: character.currentDepth === 0
                         ? "Valoria City"
-                        : `${character.currentDepth}km from City`,
-                    isSafe: character.currentDepth < 200,
+                        : tier.name || `${character.currentDepth}km from City`,
+                    isSafe: character.currentDepth < 200, // Keep 200km limit for now or check if tier name contains 'Safe'
                     rankName: tier.name,
                     dangerLevel: tier.dangerMult.toFixed(1) + "x",
                     expBonus: Math.round((tier.expMult - 1) * 100 + (Math.floor(depth / 50) * 5)),
@@ -161,297 +162,6 @@ export async function gameRoutes(server) {
         catch (err) {
             server.log.error(err);
             return reply.status(500).send({ error: "Failed to fetch status" });
-        }
-    });
-    // GET /api/game/friends
-    server.get("/friends", async (request, reply) => {
-        const { characterId } = request.user;
-        try {
-            const friendships = await prisma.friendship.findMany({
-                where: {
-                    OR: [{ characterId }, { friendId: characterId }],
-                },
-                include: {
-                    character: true,
-                    friend: true,
-                },
-            });
-            const friends = friendships
-                .filter((f) => f.status === "ACCEPTED")
-                .map((f) => {
-                const isMeInitiator = f.characterId === characterId;
-                const other = isMeInitiator ? f.friend : f.character;
-                return { id: other.id, userId: other.userId, name: other.name, level: other.level };
-            });
-            // Pending requests are only those where we are the TARGET (friendId)
-            const pending = friendships
-                .filter((f) => f.status === "PENDING" && f.friendId === characterId)
-                .map((f) => {
-                return { id: f.character.id, userId: f.character.userId, name: f.character.name, level: f.character.level };
-            });
-            return reply.send({ friends, pending });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to fetch friends" });
-        }
-    });
-    // GET /api/game/chat/world
-    server.get("/chat/world", async (request, reply) => {
-        try {
-            const messages = await prisma.chatMessage.findMany({
-                where: { type: "WORLD" },
-                take: 100,
-                orderBy: { timestamp: "desc" },
-                include: { fromCharacter: true }
-            });
-            // Reverse to show oldest first in UI
-            const formatted = messages.reverse().map((m) => ({
-                id: m.id,
-                userId: m.fromCharacter.userId,
-                characterName: m.fromCharacter.name,
-                message: m.content,
-                timestamp: m.timestamp.toISOString()
-            }));
-            return reply.send({ messages: formatted });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to fetch world chat history" });
-        }
-    });
-    // GET /api/game/chat/private/recent
-    server.get("/chat/private/recent", async (request, reply) => {
-        const { characterId } = request.user;
-        try {
-            // Find all unique partners we've exchanged messages with
-            const messages = await prisma.chatMessage.findMany({
-                where: {
-                    type: "PRIVATE",
-                    OR: [
-                        { fromCharacterId: characterId },
-                        { toCharacterId: characterId },
-                    ]
-                },
-                orderBy: { timestamp: "desc" },
-                include: { fromCharacter: true, toCharacter: true }
-            });
-            const partnersMap = new Map();
-            for (const m of messages) {
-                const isFromMe = m.fromCharacterId === characterId;
-                const partner = isFromMe ? m.toCharacter : m.fromCharacter;
-                if (!partner)
-                    continue;
-                if (!partnersMap.has(partner.id)) {
-                    partnersMap.set(partner.id, {
-                        userId: partner.userId,
-                        name: partner.name,
-                        lastMessage: m.content,
-                        timestamp: m.timestamp.toISOString(),
-                        unreadCount: 0
-                    });
-                }
-                // Count unread messages (from partner to me)
-                if (!isFromMe && m.toCharacterId === characterId && !m.isRead) {
-                    const entry = partnersMap.get(partner.id);
-                    entry.unreadCount++;
-                }
-            }
-            return reply.send({ partners: Array.from(partnersMap.values()) });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to fetch recent partners" });
-        }
-    });
-    // POST /api/game/chat/private/clear
-    server.post("/chat/private/clear", async (request, reply) => {
-        const { characterId } = request.user;
-        const { targetUserId } = request.body;
-        try {
-            const targetChar = await prisma.character.findFirst({ where: { userId: targetUserId } });
-            if (!targetChar)
-                return reply.status(404).send({ error: "Target player not found" });
-            await prisma.chatMessage.deleteMany({
-                where: {
-                    type: "PRIVATE",
-                    OR: [
-                        { fromCharacterId: characterId, toCharacterId: targetChar.id },
-                        { fromCharacterId: targetChar.id, toCharacterId: characterId },
-                    ]
-                }
-            });
-            return reply.send({ success: true });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to clear history" });
-        }
-    });
-    // GET /api/game/chat/private/:targetUserId
-    server.get("/chat/private/:targetUserId", async (request, reply) => {
-        const { characterId } = request.user;
-        const { targetUserId } = request.params;
-        try {
-            const targetChar = await prisma.character.findFirst({ where: { userId: targetUserId } });
-            if (!targetChar)
-                return reply.status(404).send({ error: "Target player not found" });
-            // Mark messages from target to me as READ
-            await prisma.chatMessage.updateMany({
-                where: {
-                    type: "PRIVATE",
-                    fromCharacterId: targetChar.id,
-                    toCharacterId: characterId,
-                    isRead: false
-                },
-                data: { isRead: true }
-            });
-            const messages = await prisma.chatMessage.findMany({
-                where: {
-                    type: "PRIVATE",
-                    OR: [
-                        { fromCharacterId: characterId, toCharacterId: targetChar.id },
-                        { fromCharacterId: targetChar.id, toCharacterId: characterId },
-                    ]
-                },
-                take: 50,
-                orderBy: { timestamp: "desc" },
-                include: { fromCharacter: true }
-            });
-            const formatted = messages.reverse().map((m) => ({
-                fromUserId: m.fromCharacter.userId,
-                fromCharacterName: m.fromCharacter.name,
-                message: m.content,
-                timestamp: m.timestamp.toISOString()
-            }));
-            return reply.send({ messages: formatted });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to fetch private chat history" });
-        }
-    });
-    // POST /api/game/friends/add
-    server.post("/friends/add", async (request, reply) => {
-        const { characterId } = request.user;
-        const { targetName } = request.body;
-        if (!targetName)
-            return reply.status(400).send({ error: "Name required" });
-        try {
-            const targetChar = await prisma.character.findUnique({
-                where: { name: targetName },
-            });
-            if (!targetChar)
-                return reply.status(404).send({ error: "Player not found" });
-            if (targetChar.id === characterId)
-                return reply.status(400).send({ error: "Cannot add yourself" });
-            const char = await prisma.character.findUnique({ where: { id: characterId } });
-            // Check existing
-            const existing = await prisma.friendship.findFirst({
-                where: {
-                    OR: [
-                        { characterId, friendId: targetChar.id },
-                        { characterId: targetChar.id, friendId: characterId },
-                    ],
-                },
-            });
-            if (existing) {
-                if (existing.status === "ACCEPTED")
-                    return reply.status(400).send({ error: "Already friends" });
-                if (existing.status === "PENDING") {
-                    if (existing.friendId === characterId) {
-                        // They already sent US a request. Let's just auto-accept it!
-                        await prisma.friendship.update({ where: { id: existing.id }, data: { status: "ACCEPTED" } });
-                        const io = getIO();
-                        io.to(`user:${targetChar.userId}`).emit("friend_request_accepted", { friendName: char?.name, friendUserId: char?.userId });
-                        return reply.send({ success: true, message: "Friend request auto-accepted!" });
-                    }
-                    else {
-                        return reply.status(400).send({ error: "Friend request already pending" });
-                    }
-                }
-            }
-            await prisma.friendship.create({
-                data: {
-                    characterId,
-                    friendId: targetChar.id,
-                    status: "PENDING"
-                },
-            });
-            const io = getIO();
-            if (char) {
-                io.to(`user:${targetChar.userId}`).emit("friend_request_received", {
-                    fromName: char.name,
-                    fromUserId: char.userId
-                });
-            }
-            return reply.send({ success: true, message: "Friend request sent!" });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to add friend" });
-        }
-    });
-    // POST /api/game/friends/accept
-    server.post("/friends/accept", async (request, reply) => {
-        const { characterId } = request.user;
-        const { targetUserId } = request.body;
-        if (!targetUserId)
-            return reply.status(400).send({ error: "Target required" });
-        try {
-            const targetChar = await prisma.character.findFirst({
-                where: { userId: targetUserId },
-            });
-            if (!targetChar)
-                return reply.status(404).send({ error: "Player not found" });
-            const existing = await prisma.friendship.findFirst({
-                where: { characterId: targetChar.id, friendId: characterId, status: "PENDING" }
-            });
-            if (!existing)
-                return reply.status(404).send({ error: "No pending request from this player" });
-            await prisma.friendship.update({
-                where: { id: existing.id },
-                data: { status: "ACCEPTED" }
-            });
-            const char = await prisma.character.findUnique({ where: { id: characterId } });
-            const io = getIO();
-            io.to(`user:${targetChar.userId}`).emit("friend_request_accepted", {
-                friendName: char?.name,
-                friendUserId: char?.userId
-            });
-            return reply.send({ success: true, message: "Friend request accepted." });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to accept friend request" });
-        }
-    });
-    // POST /api/game/friends/remove
-    server.post("/friends/remove", async (request, reply) => {
-        const { characterId } = request.user;
-        const { targetUserId } = request.body;
-        if (!targetUserId)
-            return reply.status(400).send({ error: "Target required" });
-        try {
-            const targetChar = await prisma.character.findFirst({
-                where: { userId: targetUserId },
-            });
-            if (!targetChar)
-                return reply.status(404).send({ error: "Player not found" });
-            // Delete friendship in either direction
-            await prisma.friendship.deleteMany({
-                where: {
-                    OR: [
-                        { characterId, friendId: targetChar.id },
-                        { characterId: targetChar.id, friendId: characterId },
-                    ],
-                },
-            });
-            return reply.send({ success: true, message: "Friend removed." });
-        }
-        catch (err) {
-            server.log.error(err);
-            return reply.status(500).send({ error: "Failed to remove friend" });
         }
     });
     // POST /api/game/travel
@@ -544,10 +254,13 @@ export async function gameRoutes(server) {
                 return reply.send(result);
             }
             if (action === "skip") {
+                if (encounter.type === "PVP_WAITING") {
+                    return reply.status(400).send({ error: "Waiting for opponent response..." });
+                }
                 // 🏃 FLEE — works for Player 2 (PVP) and Player 1 (PVP_INCOMING)
                 if (encounter.type === "PVP" || encounter.type === "PVP_INCOMING") {
                     const stats = await equipmentService.getCharacterCombatStats(characterId);
-                    const fleeChance = Math.min(0.8, (stats.agi / 20));
+                    const fleeChance = Math.min(GAME_BALANCE.PVP_FLEE_CHANCE_CAP, (stats.agi / GAME_BALANCE.PVP_FLEE_AGI_DIVISOR));
                     if (Math.random() < fleeChance) {
                         await prisma.character.update({
                             where: { id: characterId },
@@ -675,6 +388,9 @@ export async function gameRoutes(server) {
                     startMaxEnemyHp: combatResult.defenderMaxHp,
                     isWin: combatResult.isWin, // P2's perspective (true = P2 won)
                     goldStolen: combatResult.goldStolen,
+                    lootedItems: combatResult.isWin ? combatResult.lootedItems : [],
+                    experienceGained: 0,
+                    goldGained: combatResult.isWin ? combatResult.goldStolen : 0,
                 };
                 const p1Payload = {
                     log: combatResult.log,
@@ -686,6 +402,9 @@ export async function gameRoutes(server) {
                     startMaxEnemyHp: combatResult.attackerMaxHp,
                     isWin: !combatResult.isWin, // P1's perspective (true = P1 won)
                     goldStolen: combatResult.goldStolen,
+                    lootedItems: !combatResult.isWin ? combatResult.lootedItems : [],
+                    experienceGained: 0,
+                    goldGained: !combatResult.isWin ? combatResult.goldStolen : 0,
                 };
                 // Emit to the OTHER player via socket (the resolver gets it via the route response)
                 const io = getIO();
@@ -722,12 +441,14 @@ export async function gameRoutes(server) {
             return reply.status(500).send({ error: "Failed to resolve encounter" });
         }
     });
-    // POST /api/game/stats/allocate
     server.post("/stats/allocate", async (request, reply) => {
         const { characterId } = request.user;
-        const { stat } = request.body;
+        const { stat, amount = 1 } = request.body;
         if (!["str", "agi", "dex", "luk", "int"].includes(stat)) {
             return reply.status(400).send({ error: "Invalid stat type" });
+        }
+        if (amount <= 0) {
+            return reply.status(400).send({ error: "Invalid amount" });
         }
         try {
             const character = await prisma.character.findUnique({
@@ -736,14 +457,14 @@ export async function gameRoutes(server) {
             if (!character) {
                 return reply.status(404).send({ error: BACKEND_MESSAGES.CHARACTER_NOT_FOUND });
             }
-            if (character.statPoints <= 0) {
-                return reply.status(400).send({ error: "No stat points available" });
+            if (character.statPoints < amount) {
+                return reply.status(400).send({ error: "Not enough stat points available" });
             }
             const updatedCharacter = await prisma.character.update({
                 where: { id: characterId },
                 data: {
-                    [stat]: { increment: 1 },
-                    statPoints: { decrement: 1 },
+                    [stat]: { increment: amount },
+                    statPoints: { decrement: amount },
                 },
             });
             return reply.send({ success: true, character: updatedCharacter });
@@ -931,6 +652,299 @@ export async function gameRoutes(server) {
         }
         catch (e) {
             return reply.status(400).send({ error: e.message });
+        }
+    });
+    /**
+     * 👥 Friends System
+     */
+    server.get("/friends", async (request, reply) => {
+        const { characterId } = request.user;
+        try {
+            const friendships = await prisma.friendship.findMany({
+                where: {
+                    OR: [{ characterId: characterId }, { friendId: characterId }],
+                },
+                include: {
+                    character: {
+                        select: { id: true, name: true, level: true, actionStatus: true, userId: true },
+                    },
+                    friend: {
+                        select: { id: true, name: true, level: true, actionStatus: true, userId: true },
+                    },
+                },
+            });
+            const friends = friendships
+                .filter((f) => f.status === "ACCEPTED")
+                .map((f) => {
+                const isInitiator = f.characterId === characterId;
+                return isInitiator ? f.friend : f.character;
+            });
+            const pending = friendships
+                .filter((f) => f.status === "PENDING" && f.friendId === characterId)
+                .map((f) => f.character);
+            const outgoing = friendships
+                .filter((f) => f.status === "PENDING" && f.characterId === characterId)
+                .map((f) => f.friend);
+            return reply.send({ friends, pending, outgoing });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to fetch friends" });
+        }
+    });
+    server.post("/friends/add", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetName } = request.body;
+        try {
+            const target = await prisma.character.findUnique({ where: { name: targetName } });
+            if (!target)
+                return reply.status(404).send({ error: "Character not found" });
+            if (target.id === characterId)
+                return reply.status(400).send({ error: "Cannot add yourself" });
+            const char = await prisma.character.findUnique({ where: { id: characterId } });
+            const existing = await prisma.friendship.findFirst({
+                where: {
+                    OR: [
+                        { characterId, friendId: target.id },
+                        { characterId: target.id, friendId: characterId },
+                    ],
+                },
+            });
+            if (existing) {
+                if (existing.status === "ACCEPTED")
+                    return reply.status(400).send({ error: "Already friends" });
+                if (existing.status === "PENDING") {
+                    if (existing.friendId === characterId) {
+                        // Auto-accept if they already sent us a request
+                        await prisma.friendship.update({ where: { id: existing.id }, data: { status: "ACCEPTED" } });
+                        const io = getIO();
+                        if (io && char) {
+                            io.to(`user:${target.userId}`).emit("friend_request_accepted", {
+                                friendName: char.name,
+                                friendUserId: char.userId
+                            });
+                        }
+                        return reply.send({ success: true, message: "Friend request auto-accepted!" });
+                    }
+                    return reply.status(400).send({ error: "Friend request already pending" });
+                }
+            }
+            await prisma.friendship.create({
+                data: { characterId, friendId: target.id, status: "PENDING" },
+            });
+            // Notify target via socket
+            const io = getIO();
+            if (io && char) {
+                io.to(`user:${target.userId}`).emit("friend_request_received", {
+                    fromName: char.name,
+                    fromUserId: char.userId,
+                });
+            }
+            return reply.send({ success: true, message: "Friend request sent" });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to add friend" });
+        }
+    });
+    server.post("/friends/accept", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetUserId } = request.body; // targetUserId here is actually characterId
+        try {
+            const friendship = await prisma.friendship.findFirst({
+                where: { characterId: targetUserId, friendId: characterId, status: "PENDING" },
+            });
+            if (!friendship)
+                return reply.status(404).send({ error: "Friend request not found" });
+            await prisma.friendship.update({
+                where: { id: friendship.id },
+                data: { status: "ACCEPTED" },
+            });
+            const io = getIO();
+            const me = await prisma.character.findUnique({ where: { id: characterId } });
+            const target = await prisma.character.findUnique({ where: { id: targetUserId } });
+            if (io && me && target) {
+                io.to(`user:${target.userId}`).emit("friend_request_accepted", {
+                    friendName: me.name,
+                    friendUserId: me.userId,
+                });
+            }
+            return reply.send({ success: true, message: "Friend request accepted" });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to accept friend" });
+        }
+    });
+    server.post("/friends/remove", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetUserId } = request.body;
+        try {
+            await prisma.friendship.deleteMany({
+                where: {
+                    OR: [
+                        { characterId, friendId: targetUserId },
+                        { characterId: targetUserId, friendId: characterId },
+                    ],
+                },
+            });
+            return reply.send({ success: true, message: "Friend removed" });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to remove friend" });
+        }
+    });
+    /**
+     * 💬 Chat History
+     */
+    server.get("/chat/world", async (request, reply) => {
+        try {
+            const messages = await prisma.chatMessage.findMany({
+                where: { type: "WORLD" },
+                orderBy: { timestamp: "desc" },
+                take: 50,
+                include: { fromCharacter: { select: { id: true, name: true, userId: true } } },
+            });
+            return reply.send({
+                messages: messages.reverse().map((m) => ({
+                    senderId: m.fromCharacterId,
+                    senderName: m.fromCharacter.name,
+                    senderUserId: m.fromCharacter.userId,
+                    message: m.content,
+                    createdAt: m.timestamp,
+                    channel: "global",
+                })),
+            });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to fetch chat history" });
+        }
+    });
+    server.get("/chat/trade", async (request, reply) => {
+        try {
+            const messages = await prisma.chatMessage.findMany({
+                where: { type: "TRADE" },
+                orderBy: { timestamp: "desc" },
+                take: 50,
+                include: { fromCharacter: { select: { id: true, name: true, userId: true } } },
+            });
+            return reply.send({
+                messages: messages.reverse().map((m) => ({
+                    senderId: m.fromCharacterId,
+                    senderName: m.fromCharacter.name,
+                    senderUserId: m.fromCharacter.userId,
+                    message: m.content,
+                    createdAt: m.timestamp,
+                    channel: "trade",
+                })),
+            });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to fetch trade chat history" });
+        }
+    });
+    server.get("/chat/private/recent", async (request, reply) => {
+        const { characterId } = request.user;
+        try {
+            const messages = await prisma.chatMessage.findMany({
+                where: {
+                    type: "PRIVATE",
+                    OR: [
+                        { fromCharacterId: characterId },
+                        { toCharacterId: characterId },
+                    ],
+                },
+                orderBy: { timestamp: "desc" },
+                include: {
+                    fromCharacter: { select: { id: true, name: true, level: true } },
+                    toCharacter: { select: { id: true, name: true, level: true } },
+                },
+            });
+            const partnersMap = new Map();
+            messages.forEach((m) => {
+                const isFromMe = m.fromCharacterId === characterId;
+                const partner = isFromMe ? m.toCharacter : m.fromCharacter;
+                const partnerId = isFromMe ? m.toCharacterId : m.fromCharacterId;
+                if (!partnerId || !partner)
+                    return;
+                if (!partnersMap.has(partnerId)) {
+                    partnersMap.set(partnerId, {
+                        ...partner,
+                        lastMessageAt: m.timestamp,
+                        lastMessage: m.content,
+                        hasUnread: !isFromMe && !m.isRead,
+                    });
+                }
+                else if (!isFromMe && !m.isRead) {
+                    // If we already have the partner, but this message is also unread
+                    partnersMap.get(partnerId).hasUnread = true;
+                }
+            });
+            // Sort by lastMessageAt descending
+            const partners = Array.from(partnersMap.values()).sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+            return reply.send({ partners });
+        }
+        catch (e) {
+            console.error(e);
+            return reply.status(500).send({ error: "Failed to fetch recent partners" });
+        }
+    });
+    server.get("/chat/private/:targetUserId", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetUserId } = request.params;
+        try {
+            // Mark as read
+            await prisma.chatMessage.updateMany({
+                where: {
+                    fromCharacterId: targetUserId,
+                    toCharacterId: characterId,
+                    type: "PRIVATE",
+                    isRead: false,
+                },
+                data: { isRead: true },
+            });
+            const messages = await prisma.chatMessage.findMany({
+                where: {
+                    type: "PRIVATE",
+                    OR: [
+                        { fromCharacterId: characterId, toCharacterId: targetUserId },
+                        { fromCharacterId: targetUserId, toCharacterId: characterId },
+                    ],
+                },
+                orderBy: { timestamp: "desc" },
+                take: 50,
+                include: { fromCharacter: { select: { id: true, name: true, userId: true } } },
+            });
+            return reply.send({
+                messages: messages.reverse().map((m) => ({
+                    senderId: m.fromCharacterId,
+                    senderName: m.fromCharacter.name,
+                    senderUserId: m.fromCharacter.userId,
+                    recipientId: m.toCharacterId,
+                    message: m.content,
+                    createdAt: m.timestamp,
+                    channel: "whispers",
+                })),
+            });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to fetch private chat" });
+        }
+    });
+    server.post("/chat/private/clear", async (request, reply) => {
+        const { characterId } = request.user;
+        const { targetUserId } = request.body;
+        try {
+            await prisma.chatMessage.deleteMany({
+                where: {
+                    type: "PRIVATE",
+                    OR: [
+                        { fromCharacterId: characterId, toCharacterId: targetUserId },
+                        { fromCharacterId: targetUserId, toCharacterId: characterId },
+                    ],
+                },
+            });
+            return reply.send({ success: true });
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to clear chat" });
         }
     });
 }

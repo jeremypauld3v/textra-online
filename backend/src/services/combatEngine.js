@@ -4,17 +4,34 @@ import { equipmentService } from "./equipmentService.js";
 import { inventoryService } from "./inventoryService.js";
 import { Prisma } from "@prisma/client";
 import { GAME_BALANCE } from "../constants/gameBalance.js";
+import { zoneService } from "./zoneService.js";
+import { getIO } from "../socket.js";
 /**
  * 📊 RADIAL DEPTH TIERS & REWARDS
  */
-export const getDepthTier = (depth) => {
-    if (depth >= 2000)
-        return { name: "Nightmare", dangerMult: 2.5, expMult: 5.0, lootMult: 3.0, prefix: "[Nightmare] " };
-    if (depth >= 1000)
-        return { name: "Elite", dangerMult: 1.5, expMult: 2.0, lootMult: 1.5, prefix: "[Elite] " };
-    if (depth >= 500)
-        return { name: "Veteran", dangerMult: 1.2, expMult: 1.25, lootMult: 1.12, prefix: "[Veteran] " };
-    return { name: "Standard", dangerMult: 1.0, expMult: 1.0, lootMult: 1.0, prefix: "" };
+export const getDepthTier = async (depth) => {
+    const zone = await zoneService.getZoneAtDepth(depth);
+    if (zone) {
+        return {
+            name: zone.name,
+            dangerMult: zone.dangerMultiplier,
+            expMult: zone.expMultiplier,
+            lootMult: zone.dropChanceMultiplier,
+            prefix: `[${zone.name}] `,
+            commonNodeTypes: zone.commonNodeTypes,
+            excludedNodeTypes: zone.excludedNodeTypes
+        };
+    }
+    // Fallback if no zone is defined in DB
+    return {
+        name: "Wilderness",
+        dangerMult: 1.0,
+        expMult: 1.0,
+        lootMult: 1.0,
+        prefix: "",
+        commonNodeTypes: [],
+        excludedNodeTypes: []
+    };
 };
 /**
  * 🛠️ CORE LEVELING LOGIC
@@ -44,12 +61,12 @@ function calculateLevelUp(currentLevel, currentExp, gainedExp) {
 function calculateDamage(attackerStats, defenderDef, isGathering = false) {
     const basePower = isGathering ? (attackerStats.dex * 2 + attackerStats.int * 0.5) : attackerStats.atk;
     const variance = 0.9 + (Math.random() * 0.2); // 90% to 110%
-    // Penetration logic: Higher DEX ignores more defense
-    const penetration = 1 - Math.min(0.5, (attackerStats.dex / 500));
+    // Penetration logic: Higher DEX ignores more defense (Capped at 80%)
+    const penetration = 1 - Math.min(0.8, (attackerStats.dex / 1000));
     const effectiveDef = defenderDef * penetration;
     const rawDamage = Math.max(5, (basePower * variance) - (effectiveDef * 0.5));
-    // Crit logic
-    const critChance = Math.min(0.5, (attackerStats.luk * (isGathering ? GAME_BALANCE.GATHER_CRIT_MODIFIER : GAME_BALANCE.BASE_CRIT_MODIFIER)));
+    // Crit logic (Capped at 80%)
+    const critChance = Math.min(0.8, (attackerStats.luk * (isGathering ? GAME_BALANCE.GATHER_CRIT_MODIFIER : GAME_BALANCE.BASE_CRIT_MODIFIER)));
     const isCrit = Math.random() < critChance;
     return {
         damage: Math.floor(isCrit ? rawDamage * 2 : rawDamage),
@@ -58,21 +75,21 @@ function calculateDamage(attackerStats, defenderDef, isGathering = false) {
 }
 export async function generatePVEEncounter(character) {
     const depth = character.currentDepth;
-    const tier = getDepthTier(depth);
+    const tier = await getDepthTier(depth);
     const monster = await gameDataManager.getRandomMonster(depth);
     if (!monster)
         throw new Error("No monsters defined in database");
-    const hpMult = (1 + (depth / 200)) * tier.dangerMult;
-    const statMult = (1 + (depth / 250)) * tier.dangerMult;
-    const expMult = (1 + (Math.floor(depth / 50) * 0.05)) * tier.expMult;
-    const scaledHp = Math.floor(monster.hp * hpMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
+    const hpMult = (1 + (depth / GAME_BALANCE.HP_SCALING_DIVISOR)) * tier.dangerMult;
+    const statMult = (1 + (depth / GAME_BALANCE.STAT_SCALING_DIVISOR)) * tier.dangerMult;
+    const expMult = (1 + (Math.floor(depth / GAME_BALANCE.EXP_STEP_DIVISOR) * GAME_BALANCE.EXP_STEP_GROWTH)) * tier.expMult;
+    const scaledHp = Math.floor(monster.hp * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, hpMult)) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
     return {
         type: "PVE",
         name: tier.prefix + monster.name,
         hp: scaledHp,
         maxHp: scaledHp,
-        attack: Math.floor(monster.attack * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
-        defense: Math.floor(monster.defense * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+        attack: Math.floor(monster.attack * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, statMult)) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+        defense: Math.floor(monster.defense * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, statMult)) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
         expValue: Math.floor(monster.expReward * expMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_EXP_BONUS)
     };
 }
@@ -81,10 +98,26 @@ export async function generateGatheringEncounter(character) {
     const nodes = await gameDataManager.getResourceNodes();
     if (!nodes || nodes.length === 0)
         throw new Error("No resource nodes defined in database");
-    const node = nodes[Math.floor(Math.random() * nodes.length)];
+    const tier = await getDepthTier(depth);
+    // Apply Zone logic: Filters & Weights
+    let availableNodes = nodes;
+    if (tier.excludedNodeTypes?.length > 0) {
+        availableNodes = nodes.filter(n => !tier.excludedNodeTypes.includes(n.type));
+    }
+    // If no nodes left after exclusion, fallback to all (safeguard)
+    if (availableNodes.length === 0)
+        availableNodes = nodes;
+    // Weighting: Nodes in commonNodeTypes are 3x more likely
+    const weightedNodes = [];
+    availableNodes.forEach(n => {
+        const weight = tier.commonNodeTypes?.includes(n.type) ? 3 : 1;
+        for (let i = 0; i < weight; i++) {
+            weightedNodes.push(n);
+        }
+    });
+    const node = weightedNodes[Math.floor(Math.random() * weightedNodes.length)];
     if (!node)
         throw new Error("Failed to select resource node");
-    const tier = getDepthTier(depth);
     const hpMult = (1 + (depth / 300)) * tier.dangerMult;
     const rewardMult = (1 + (depth / 500)) * tier.expMult;
     const integrity = Math.floor(node.baseHp * hpMult);
@@ -99,6 +132,7 @@ export async function generateGatheringEncounter(character) {
     };
 }
 export async function executeCombat(character, enemy) {
+    const startEnemyHp = enemy.hp;
     let enemyHp = enemy.hp;
     const enemyAttack = enemy.attack;
     const enemyDefense = enemy.defense;
@@ -134,13 +168,15 @@ export async function executeCombat(character, enemy) {
             turn: turnCounter,
             attacker: "Player",
             damage: playerDamage,
-            message: msg
+            message: msg,
+            isCrit: isCrit
         });
         if (enemyHp <= 0)
             break;
         const eResult = calculateDamage({ atk: enemyAttack, dex: 50, luk: 5 }, playerDefense);
         const enemyDamage = eResult.damage;
-        const isDodged = Math.random() < (stats.agi * GAME_BALANCE.BASE_DODGE_MODIFIER);
+        const dodgeChance = Math.min(0.8, (stats.agi * GAME_BALANCE.BASE_DODGE_MODIFIER));
+        const isDodged = Math.random() < dodgeChance;
         if (isDodged) {
             combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: 0, message: `${character.name} deftly dodged ${enemy.name}'s attack!` });
         }
@@ -151,7 +187,13 @@ export async function executeCombat(character, enemy) {
                 `${enemy.name} lunges at ${character.name}.`,
                 `${enemy.name} deals a hit.`,
             ];
-            combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: enemyDamage, message: enemyMsgs[Math.floor(Math.random() * enemyMsgs.length)] + ` (-${enemyDamage})` });
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Enemy",
+                damage: enemyDamage,
+                message: enemyMsgs[Math.floor(Math.random() * enemyMsgs.length)] + ` (-${enemyDamage})`,
+                isCrit: eResult.isCrit
+            });
         }
         turnCounter++;
         if (turnCounter > 100)
@@ -159,6 +201,14 @@ export async function executeCombat(character, enemy) {
     }
     const isWin = playerHp > 0;
     let finalExp = isWin ? (enemy.expValue || 0) : 0;
+    let finalGold = 0;
+    const monsterTemplate = isWin ? await gameDataManager.getMonster(enemy.name.replace(/^\[.*\] /, "")) : null;
+    if (isWin && monsterTemplate) {
+        const minMult = monsterTemplate.minGoldMult || 0.8;
+        const maxMult = monsterTemplate.maxGoldMult || 1.2;
+        const randomMult = Math.random() * (maxMult - minMult) + minMult;
+        finalGold = Math.floor(monsterTemplate.goldReward * randomMult);
+    }
     const { level, exp, levelGain } = calculateLevelUp(character.level, character.exp, finalExp);
     const nextMaxHp = character.maxHp + (levelGain * 10);
     let nextHp = Math.max(1, playerHp);
@@ -178,6 +228,7 @@ export async function executeCombat(character, enemy) {
         data: {
             hp: nextHp,
             exp, level,
+            gold: { increment: finalGold },
             currentDepth: nextDepth,
             statPoints: { increment: levelGain * 5 },
             maxHp: nextMaxHp,
@@ -187,12 +238,9 @@ export async function executeCombat(character, enemy) {
         }
     });
     const lootedItems = [];
-    if (isWin) {
-        const monsterTemplate = await gameDataManager.getMonster(enemy.name.replace(/^\[.*\] /, ""));
-        if (monsterTemplate && monsterTemplate.lootTable) {
-            const lootResult = await resolveLootRolls(character, stats, monsterTemplate.lootTable);
-            lootedItems.push(...lootResult);
-        }
+    if (isWin && monsterTemplate && monsterTemplate.lootTable) {
+        const lootResult = await resolveLootRolls(character, stats, monsterTemplate.lootTable);
+        lootedItems.push(...lootResult);
     }
     const savedLog = await prisma.battleLog.create({
         data: {
@@ -203,14 +251,28 @@ export async function executeCombat(character, enemy) {
             logDetails: combatLog
         }
     });
-    return { success: true, isWin, updatedChar, log: savedLog, loot: lootedItems };
+    return {
+        success: true,
+        isWin,
+        updatedChar,
+        log: savedLog,
+        lootedItems: lootedItems,
+        experienceGained: finalExp,
+        goldGained: finalGold,
+        playerName: character.name,
+        enemyName: enemy.name,
+        startPlayerHp: character.hp,
+        startMaxPlayerHp: character.maxHp,
+        startEnemyHp: startEnemyHp,
+        startMaxEnemyHp: startEnemyHp
+    };
 }
 export async function executeGathering(character, node) {
     if (character.energy <= 0) {
         throw new Error("You are too exhausted to gather. You must camp to restore energy.");
     }
     const stats = await equipmentService.getCharacterCombatStats(character.id);
-    const gatherPower = Math.max(2, Math.floor(stats.dex * 1.5 + stats.int * 0.5));
+    const gatherPower = Math.max(2, Math.floor(stats.dex * 0.5 + stats.int * 0.2));
     let integrity = node.hp;
     let turnCounter = 1;
     const gatherLog = [];
@@ -245,14 +307,20 @@ export async function executeGathering(character, node) {
         turnCounter++;
     }
     const { level, exp, levelGain } = calculateLevelUp(character.level, character.exp, node.xpReward || 0);
+    let nextStatus = character.previousStatus || "IDLE";
+    const newEnergy = Math.max(0, character.energy - 5);
+    if (newEnergy <= 0) {
+        nextStatus = "CAMPING";
+        getIO().to(`user:${character.userId}`).emit("exhaustion_forced_camp", { message: "You used up the last of your energy gathering. Setting up camp..." });
+    }
     const updatedChar = await prisma.character.update({
         where: { id: character.id },
         data: {
             exp, level,
             statPoints: { increment: levelGain * 5 },
             maxHp: { increment: levelGain * 10 },
-            energy: { decrement: 5 }, // Deduct 5 energy for gathering
-            actionStatus: character.previousStatus || "IDLE",
+            energy: newEnergy,
+            actionStatus: nextStatus,
             previousStatus: null,
             pendingEncounter: Prisma.DbNull
         }
@@ -267,44 +335,35 @@ export async function executeGathering(character, node) {
         const lootResult = await resolveLootRolls(character, stats, nodeTemplate.lootTable);
         lootedItems.push(...lootResult);
     }
-    return { success: true, type: "GATHERING", item: node.name, amount: lootedItems.length, updatedChar, log: savedLog, startIntegrity: node.maxHp, loot: lootedItems };
-}
-/**
- * 🎲 EQUIPMENT STAT ROLLER
- * Generates random variances for item stats.
- */
-function generateEquipmentRolls(stats, template) {
-    const luckBonus = (stats.luk * 0.005); // 100 LUK = +50% roll floor improvement
-    const minMult = 0.8 + luckBonus;
-    const maxMult = 1.2 + luckBonus;
-    const roll = (base) => {
-        if (!base)
-            return null;
-        const mult = minMult + (Math.random() * (maxMult - minMult));
-        return Math.floor(base * mult);
-    };
     return {
-        rolledAtk: roll(template.statAtk),
-        rolledDef: roll(template.statDef),
-        rolledStr: roll(template.statStr),
-        rolledAgi: roll(template.statAgi),
-        rolledInt: roll(template.statInt),
-        rolledLuk: roll(template.statLuk),
+        success: true,
+        type: "GATHERING",
+        isWin: true,
+        item: node.name,
+        amount: lootedItems.length,
+        updatedChar,
+        log: savedLog,
+        experienceGained: node.xpReward || 0,
+        goldGained: 0,
+        startIntegrity: integrity,
+        startMaxPlayerHp: character.maxHp,
+        startPlayerHp: character.hp,
+        lootedItems: lootedItems
     };
 }
 /**
  * 🎲 UNIVERSAL LOOT ROLLER
  * Handles depth-scaling, Rarity modifiers, and Luck bonuses.
  */
-async function resolveLootRolls(character, stats, lootTable) {
+export async function resolveLootRolls(character, stats, lootTable, manualMultiplier = 1.0) {
     const depth = character.currentDepth;
-    const tier = getDepthTier(depth);
+    const tier = await getDepthTier(depth);
     const lootedItems = [];
     // Base Multiplier: 1 + (Depth / Interval * Growth) + (LUK * Bonus)
     const depthIntervals = Math.floor(depth / GAME_BALANCE.LOOT_DEPTH_INTERVAL);
     const baseDepthMult = (depthIntervals * GAME_BALANCE.LOOT_CHANCE_GROWTH);
     const lukMult = (stats.luk * GAME_BALANCE.LOOT_LUK_QUALITY_BONUS);
-    const totalLootMult = (1 + baseDepthMult + lukMult) * tier.lootMult;
+    const totalLootMult = (1 + baseDepthMult + lukMult) * tier.lootMult * manualMultiplier;
     const quantityMult = 1 + (depthIntervals * GAME_BALANCE.LOOT_QUANTITY_GROWTH);
     for (const entry of lootTable) {
         // Rarity scaling: Rare items benefit more from high depth multipliers
@@ -320,7 +379,7 @@ async function resolveLootRolls(character, stats, lootTable) {
                 const itemTemplate = await gameDataManager.getItem(entry.itemCode);
                 let rolls = {};
                 if (itemTemplate?.type === "EQUIPMENT") {
-                    rolls = generateEquipmentRolls(stats, itemTemplate);
+                    rolls = equipmentService.generateEquipmentRolls(stats, itemTemplate);
                 }
                 await inventoryService.addItem(character.id, entry.itemCode, finalQty, rolls);
                 lootedItems.push({
@@ -344,7 +403,8 @@ async function resolveLootRolls(character, stats, lootTable) {
         const mythicalItems = allItems.filter(i => i.rarityId === "MYTHICAL");
         if (mythicalItems.length > 0) {
             const drop = mythicalItems[Math.floor(Math.random() * mythicalItems.length)];
-            await inventoryService.addItem(character.id, drop.code, 1);
+            const rolls = equipmentService.generateEquipmentRolls(stats, drop);
+            await inventoryService.addItem(character.id, drop.code, 1, rolls);
             lootedItems.push({
                 itemCode: drop.code,
                 quantity: 1,
@@ -416,13 +476,13 @@ export async function resolvePvpCombat(attackerId, defenderId) {
                 // Stackable material
                 await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { increment: item.quantity } } });
                 await tx.inventoryItem.delete({ where: { id: item.id } });
-                droppedItems.push(item.itemCode);
+                droppedItems.push({ itemCode: item.itemCode, quantity: item.quantity });
             }
             else if (currentSlots < 100) {
                 // New slot (equipment or new material stack)
                 await tx.inventoryItem.update({ where: { id: item.id }, data: { characterId: winner.id } });
                 currentSlots++;
-                droppedItems.push(item.itemCode);
+                droppedItems.push({ itemCode: item.itemCode, quantity: item.quantity });
             }
             else {
                 // Inventory full, item is lost to the void
@@ -435,6 +495,8 @@ export async function resolvePvpCombat(attackerId, defenderId) {
         winnerName: winner.name,
         loserName: loser.name,
         goldStolen: loserGoldLost,
+        goldGained: isAttackerWin ? loserGoldLost : 0,
+        experienceGained: 0,
         lootedItems: droppedItems,
         log: { logDetails: combatLog, enemyName: isAttackerWin ? defenderChar.name : attackerChar.name },
         // Starting HP for autobattler seeding

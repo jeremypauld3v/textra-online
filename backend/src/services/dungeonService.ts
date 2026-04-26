@@ -6,6 +6,7 @@ import { addTravelJob } from "./travelQueue.js";
 import { inventoryService } from "./inventoryService.js";
 import { gameDataManager } from "./gameDataManager.js";
 import { GAME_BALANCE } from "../constants/gameBalance.js";
+import { resolveLootRolls } from "./combatEngine.js";
 
 /**
  * 🏰 DungeonService
@@ -18,18 +19,32 @@ export class DungeonService {
    * Generate a dungeon encounter for the travel pulse
    */
   async generateDungeonEncounter(character: Character) {
-    const dungeon = await prisma.dungeonTemplate.findFirst({
+    const dungeons = await prisma.dungeonTemplate.findMany({
       where: {
         minDepth: { lte: character.currentDepth },
         OR: [
           { maxDepth: null },
           { maxDepth: { gte: character.currentDepth } }
         ],
-        minLevel: { lte: character.level }
+        minLevel: { lte: character.level },
+        monsters: {
+          some: { isBoss: true }
+        }
+      },
+      include: {
+        _count: {
+          select: { monsters: true }
+        }
       },
       orderBy: { minDepth: "desc" }
     });
 
+    // Pick the most relevant dungeon that is also valid (has a boss and at least one regular mob)
+    const validDungeons = dungeons.filter(d => d._count.monsters > 1);
+    
+    if (validDungeons.length === 0) return null;
+
+    const dungeon = validDungeons[0];
     if (!dungeon) return null;
 
     return {
@@ -38,7 +53,6 @@ export class DungeonService {
       description: dungeon.description,
       dungeonId: dungeon.id,
       floorCount: dungeon.floorCount,
-      bossName: dungeon.bossName,
       minLevel: dungeon.minLevel
     };
   }
@@ -71,8 +85,15 @@ export class DungeonService {
     const depth = character.currentDepth;
     const hpMult = Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, (1 + (depth / GAME_BALANCE.HP_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_HP_MULT);
     const statMult = Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, (1 + (depth / GAME_BALANCE.STAT_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_STAT_MULT);
-    const expMult = (1 + (depth / GAME_BALANCE.EXP_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_EXP_MULT;
+    const expMult = (1 + (depth / GAME_BALANCE.EXP_SCALING_DIVISOR)) * GAME_BALANCE.DUNGEON_EXP_MULT * dungeon.expMultiplier;
 
+    const { regular, boss } = await gameDataManager.getDungeonMonsters(dungeon.id);
+    
+    if (!boss || regular.length === 0) {
+      throw new Error("This dungeon is currently being renovated by the architects (Incomplete configuration).");
+    }
+
+    let pool = regular;
     const floors: any[] = [];
     for (let i = 1; i <= dungeon.floorCount; i++) {
       // 🎲 Roll for Special Room (Trap or Shrine)
@@ -89,39 +110,45 @@ export class DungeonService {
       }
 
       // Scale mob stats by floor number + depth multiplier
-      const floorHp = Math.floor((40 + (i * 20)) * hpMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
+      const mTemplate = pool[Math.floor(Math.random() * pool.length)];
+      const floorHp = Math.floor(mTemplate.hp * hpMult * (1 + (i * 0.1))) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
+      
       floors.push({
         type: "MOB",
         floor: floors.length + 1,
         cleared: false,
-        name: `${dungeon.name} Guardian (F${i})`,
+        monsterId: mTemplate.id,
+        name: mTemplate.name,
         hp: floorHp,
         maxHp: floorHp,
-        attack: Math.floor((8 + (i * 4)) * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
-        defense: Math.floor((5 + (i * 3)) * statMult) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
-        expReward: Math.floor((20 + (i * 12)) * expMult)
+        attack: Math.floor(mTemplate.attack * statMult * (1 + (i * 0.05))) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+        defense: Math.floor(mTemplate.defense * statMult * (1 + (i * 0.05))) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
+        expReward: Math.floor(mTemplate.expReward * expMult * (1 + (i * 0.1)))
       });
     }
 
     // Add boss as final floor
-    const bossHp = Math.floor(dungeon.bossHp * hpMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
-
-    floors.push({
-      type: "BOSS",
-      floor: floors.length + 1,
-      cleared: false,
-      name: dungeon.bossName,
-      hp: bossHp,
-      maxHp: bossHp,
-      attack: Math.floor(dungeon.bossAttack * statMult) + Math.floor(character.level * 1.5),
-      defense: Math.floor(dungeon.bossDefense * statMult) + Math.floor(character.level * 1.2),
-      expReward: Math.floor(dungeon.bossExpReward * expMult),
-      lootItemCode: dungeon.lootItemCode
-    });
+    if (boss) {
+      const bossHp = Math.floor(boss.hp * hpMult) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
+      floors.push({
+        type: "BOSS",
+        floor: floors.length + 1,
+        cleared: false,
+        monsterId: boss.id,
+        name: boss.name,
+        hp: bossHp,
+        maxHp: bossHp,
+        attack: Math.floor(boss.attack * statMult) + Math.floor(character.level * 1.5),
+        defense: Math.floor(boss.defense * statMult) + Math.floor(character.level * 1.2),
+        expReward: Math.floor(boss.expReward * expMult)
+      });
+    }
 
     const dungeonInstance = {
       templateId: dungeon.id,
       name: dungeon.name,
+      lootMultiplier: dungeon.lootMultiplier,
+      expMultiplier: dungeon.expMultiplier,
       totalFloors: floors.length,
       floors
     };
@@ -238,7 +265,7 @@ export class DungeonService {
 
       return {
         type: "TREASURE",
-        loot: lootWarning ? [] : [{ 
+        lootedItems: lootWarning ? [] : [{ 
           itemCode: lootCode, 
           quantity: qty,
           name: template?.name || lootCode,
@@ -333,28 +360,32 @@ export class DungeonService {
     const nextIndex = floorIndex + 1;
     const dungeonComplete = nextIndex >= dungeon.floors.length;
 
-    // Loot on boss kill
+    // Loot on kill
     const loot: any[] = [];
     let lootWarning = "";
-    if (floor.type === "BOSS" && floor.lootItemCode) {
-      try {
-        const itemTemplate = await gameDataManager.getItem(floor.lootItemCode);
-        let rolls = {};
-        if (itemTemplate?.type === "EQUIPMENT") {
-          const stats = await equipmentService.getCharacterCombatStats(characterId);
-          rolls = equipmentService.generateEquipmentRolls(stats, itemTemplate);
+
+    // 1. Roll for standard mob loot if applicable
+    if (floor.monsterId) {
+      const monsterTemplate = await gameDataManager.getMonster(floor.name);
+      if (monsterTemplate && monsterTemplate.lootTable) {
+        const stats = await equipmentService.getCharacterCombatStats(characterId);
+        const rolledLoot = await resolveLootRolls(character, stats, monsterTemplate.lootTable, dungeon.lootMultiplier || 1.0);
+        
+        for (const item of rolledLoot) {
+          try {
+            await inventoryService.addItem(characterId, item.itemCode, item.quantity);
+            const template = await gameDataManager.getItem(item.itemCode);
+            loot.push({
+              itemCode: item.itemCode,
+              quantity: item.quantity,
+              name: template?.name || item.itemCode,
+              emoji: template?.emoji || "📦",
+              rarityId: template?.rarityId || "COMMON"
+            });
+          } catch (e: any) {
+            lootWarning += ` (Loot lost: ${e.message})`;
+          }
         }
-        await inventoryService.addItem(characterId, floor.lootItemCode, 1, rolls);
-        const template = await gameDataManager.getItem(floor.lootItemCode);
-        loot.push({ 
-          itemCode: floor.lootItemCode, 
-          quantity: 1,
-          name: template?.name || floor.lootItemCode,
-          emoji: template?.emoji || "🎁",
-          rarityId: template?.rarityId || "COMMON"
-        });
-      } catch (e: any) {
-        lootWarning = ` (Loot lost: ${e.message})`;
       }
     }
 
@@ -399,8 +430,9 @@ export class DungeonService {
         logDetails: combatLog, 
         enemyName: `[Dungeon] ${floor.name}` 
       },
-      expGained,
-      loot,
+      experienceGained: expGained,
+      goldGained: 0,
+      lootedItems: loot,
       dungeonComplete,
       nextFloor: dungeonComplete ? null : dungeon.floors[nextIndex],
       floorIndex: dungeonComplete ? null : nextIndex,

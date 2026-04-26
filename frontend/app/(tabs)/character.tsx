@@ -13,6 +13,7 @@ import ItemIcon from "../../components/ui/ItemIcon";
 import ProgressBar from "../../components/ui/ProgressBar";
 import ScreenHeader from "../../components/ui/ScreenHeader";
 import StandardButton from "../../components/ui/StandardButton";
+import Card from "../../components/ui/Card";
 
 type StatAttribute = "str" | "agi" | "dex" | "int" | "luk";
 
@@ -92,9 +93,6 @@ export default function CharacterScreen() {
   return (
     <View className="flex-1 bg-[#020617]">
       {/* 🌌 AMBIENT MAGICAL GLOWS */}
-      <View style={{ position: 'absolute', top: -50, right: -50, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(79, 70, 229, 0.05)' }} />
-      <View style={{ position: 'absolute', bottom: -50, left: -50, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(239, 68, 68, 0.03)' }} />
-      <View style={{ position: 'absolute', top: '40%', left: '20%', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(251, 191, 36, 0.02)' }} />
 
       <ScrollView 
         className="flex-1 px-6" 
@@ -181,8 +179,7 @@ export default function CharacterScreen() {
         </View>
 
         {/* 🧬 ATTRIBUTES (CHARACTER SHEET STYLE) */}
-        <View className="bg-slate-900/60 p-8 rounded-[40px] border border-amber-900/10 mb-16 shadow-inner overflow-hidden">
-           <View style={{ position: 'absolute', top: 0, right: 0, width: 100, height: 100, backgroundColor: 'rgba(251, 191, 36, 0.03)', borderRadius: 50, transform: [{ scale: 2 }] }} />
+        <Card delay={300} className="mb-16 p-8 rounded-[40px] shadow-inner">
            
            <View className="flex-row justify-between items-center mb-8">
               <Text className="text-amber-500/60 text-[10px] font-pixel-bold uppercase tracking-[4px]">Attributes</Text>
@@ -244,7 +241,7 @@ export default function CharacterScreen() {
                </TouchableOpacity>
              </View>
            )}
-        </View>
+        </Card>
 
         {/* 📊 PERFORMANCE METRICS */}
         <View className="mb-32">
@@ -256,11 +253,11 @@ export default function CharacterScreen() {
                 { label: "Critical Strike", val: (status.luk * 0.2).toFixed(1) + "%", icon: "sparkles", color: "#f472b6" },
                 { label: "Dodge Chance", val: (status.agi * 0.15).toFixed(1) + "%", icon: "footsteps", color: "#34d399" }
               ].map((m, i) => (
-                <View key={i} className="w-[48%] mb-4 bg-slate-900/40 p-5 rounded-[24px] border border-white/5 items-center">
+                <Card key={i} delay={400 + (i * 50)} variant="flat" padding="default" className="w-[48%] mb-4 items-center rounded-[24px]">
                    <Ionicons name={m.icon as any} size={14} color={m.color} className="mb-2 opacity-50" />
                    <Text className="text-white text-lg font-pixel-bold mb-1">{m.val}</Text>
                    <Text className="text-slate-600 text-[7px] font-pixel-bold uppercase tracking-widest">{m.label}</Text>
-                </View>
+                </Card>
               ))}
            </View>
         </View>

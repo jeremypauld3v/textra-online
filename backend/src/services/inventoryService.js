@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { gameDataManager } from "./gameDataManager.js";
+import { GAME_BALANCE } from "../constants/gameBalance.js";
 /**
  * 📦 InventoryService
  * Manages all inventory transitions: adding, stacking, and capacity checks.
@@ -38,17 +39,22 @@ export class InventoryService {
             throw new Error("Your inventory is full (Max 100 slots).");
         }
         // Create New Slot
+        const cap = (val) => {
+            if (!val)
+                return null;
+            return Math.min(GAME_BALANCE.MAX_STAT_VALUE, val);
+        };
         return await db.inventoryItem.create({
             data: {
                 characterId,
                 itemCode,
                 quantity: isEquipment ? 1 : quantity,
-                rolledAtk: rolls.rolledAtk || null,
-                rolledDef: rolls.rolledDef || null,
-                rolledStr: rolls.rolledStr || null,
-                rolledAgi: rolls.rolledAgi || null,
-                rolledInt: rolls.rolledInt || null,
-                rolledLuk: rolls.rolledLuk || null,
+                rolledAtk: cap(rolls.rolledAtk),
+                rolledDef: cap(rolls.rolledDef),
+                rolledStr: cap(rolls.rolledStr),
+                rolledAgi: cap(rolls.rolledAgi),
+                rolledInt: cap(rolls.rolledInt),
+                rolledLuk: cap(rolls.rolledLuk),
             }
         });
     }

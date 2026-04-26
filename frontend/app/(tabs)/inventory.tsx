@@ -1,6 +1,6 @@
-import { View, Text, Pressable, FlatList, ActivityIndicator, RefreshControl } from "react-native";
+import { View, FlatList, ActivityIndicator, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, memo } from "react";
 import { useFocusEffect } from "expo-router";
 import { gameApi, InventoryItem } from "../../api/game";
 import Toast from "react-native-toast-message";
@@ -9,14 +9,61 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { useGameStore } from "../../store/useGameStore";
 
 // UI Components
-import BaseModal from "../../components/ui/BaseModal";
+import ItemDetailModal from "../../components/ItemDetailModal";
 import ItemIcon from "../../components/ui/ItemIcon";
 import ScreenHeader from "../../components/ui/ScreenHeader";
-import StandardButton from "../../components/ui/StandardButton";
+import TabBar from "../../components/ui/TabBar";
 import MarketListModal from "../../components/MarketListModal";
+import SearchBar from "../../components/ui/SearchBar";
 
 const TOTAL_SLOTS = 100;
 const CATEGORIES = ["ALL", "EQUIPMENT", "CONSUMABLE", "MATERIAL"];
+
+// -----------------------------------------------------------------------------
+// 🧩 MEMOIZED ITEM CELL
+// -----------------------------------------------------------------------------
+const InventoryItemCell = memo(({ 
+  item, 
+  index, 
+  meta, 
+  isEquipped, 
+  onPress 
+}: { 
+  item: InventoryItem | null; 
+  index: number; 
+  meta: any; 
+  isEquipped: boolean; 
+  onPress: () => void 
+}) => {
+  const containerClass = "w-[18.2%] aspect-square";
+
+  if (!item) {
+    return (
+      <View className={containerClass}>
+        <View className="w-full h-full bg-slate-900/20 border-2 border-slate-800/40 rounded-lg items-center justify-center">
+           <View className="w-1 h-1 rounded-full bg-white/5" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Animated.View 
+      entering={index < 40 ? FadeIn.delay(index * 10).duration(200) : undefined} 
+      className={containerClass}
+    >
+      <ItemIcon 
+        emoji={meta?.emoji || "📦"}
+        isEquipped={isEquipped}
+        quantity={item.quantity}
+        rarity={meta?.rarityId}
+        onPress={onPress}
+        size="full"
+      />
+    </Animated.View>
+  );
+});
+InventoryItemCell.displayName = "InventoryItemCell";
 
 export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
@@ -25,6 +72,7 @@ export default function InventoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isMarketModalVisible, setIsMarketModalVisible] = useState(false);
   const [equippedIds, setEquippedIds] = useState<string[]>([]);
@@ -75,6 +123,14 @@ export default function InventoryScreen() {
     if (selectedCategory !== "ALL") {
       list = list.filter((item) => itemTemplates[item.itemCode]?.type === selectedCategory);
     }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((item) => {
+        const meta = itemTemplates[item.itemCode];
+        return meta?.name.toLowerCase().includes(q) || item.itemCode.toLowerCase().includes(q);
+      });
+    }
     
     return [...list].sort((a, b) => {
       // 1. Equipped first
@@ -110,18 +166,30 @@ export default function InventoryScreen() {
       // 4. Sort by Name
       return aTemp.name.localeCompare(bTemp.name);
     });
-  }, [items, selectedCategory, itemTemplates, equippedIds]);
+  }, [items, selectedCategory, itemTemplates, equippedIds, searchQuery]);
 
   const gridData = useMemo(() => {
     const data = [...filteredItems];
-    while (data.length < 24) data.push(null as any); 
+    // Fill up to at least 40 slots for a better look
+    const minSlots = Math.max(40, Math.ceil(data.length / 5) * 5);
+    while (data.length < minSlots) data.push(null as any); 
     return data;
   }, [filteredItems]);
+
+  const renderItem = useCallback(({ item, index }: { item: InventoryItem | null, index: number }) => (
+    <InventoryItemCell 
+      item={item}
+      index={index}
+      meta={item ? itemTemplates[item.itemCode] : null}
+      isEquipped={!!item && equippedIds.includes(item.id)}
+      onPress={() => item && setSelectedItem(item)}
+    />
+  ), [itemTemplates, equippedIds]);
 
   return (
     <View className="flex-1 bg-[#020617]">
       <View 
-        className="flex-1 px-6"
+        className="flex-1 px-4"
         style={{ paddingTop: Math.max(insets.top, 16) }}
       >
         
@@ -131,18 +199,18 @@ export default function InventoryScreen() {
           badge={`${items.length}/${TOTAL_SLOTS}`}
         />
 
-        {/* 🧭 FILTER SEALS */}
-        <View className="flex-row flex-wrap justify-center mb-8 bg-slate-900/40 p-1.5 rounded-2xl border border-white/5">
-           {CATEGORIES.map((cat) => (
-             <Pressable 
-                key={cat} 
-                onPress={() => setSelectedCategory(cat)}
-                className={`flex-1 py-3 rounded-xl border ${selectedCategory === cat ? "bg-slate-800 border-white/10" : "border-transparent"}`}
-             >
-                <Text className={`text-[8px] font-pixel-bold uppercase tracking-widest text-center ${selectedCategory === cat ? "text-white" : "text-slate-600"}`}>{cat}</Text>
-             </Pressable>
-           ))}
-        </View>
+        <SearchBar 
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Filter your vault..."
+        />
+
+        <TabBar 
+          tabs={CATEGORIES} 
+          activeTab={selectedCategory} 
+          onTabChange={setSelectedCategory} 
+          className="mb-8"
+        />
 
         {/* 📦 THE GRID */}
         {loading && !refreshing ? (
@@ -152,95 +220,31 @@ export default function InventoryScreen() {
         ) : (
           <FlatList
             data={gridData}
-            numColumns={4}
-            keyExtractor={(item, index) => item?.id || index.toString()}
-            columnWrapperStyle={{ justifyContent: "center", gap: 10, marginBottom: 16 }}
+            numColumns={5}
+            keyExtractor={(item, index) => item?.id || `empty-${index}`}
+            columnWrapperStyle={{ justifyContent: "center", gap: 8, marginBottom: 8 }}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchInventory(); }} tintColor="#fbbf24" />}
-            renderItem={({ item, index }) => {
-              if (!item) {
-                return <View className="w-[23%] aspect-square bg-slate-900/40 border border-white/5 rounded-xl" />;
-              }
-              const meta = itemTemplates[item.itemCode];
-              return (
-                <Animated.View entering={FadeIn.delay(index * 10).duration(200)} className="w-[23%] aspect-square">
-                  <ItemIcon 
-                    emoji={meta?.emoji || "📦"}
-                    isEquipped={equippedIds.includes(item.id)}
-                    quantity={item.quantity}
-                    rarity={meta?.rarityId}
-                    onPress={() => setSelectedItem(item)}
-                  />
-                </Animated.View>
-              );
-            }}
+            renderItem={renderItem}
+            initialNumToRender={40}
+            maxToRenderPerBatch={40}
+            windowSize={5}
+            removeClippedSubviews={true}
           />
         )}
       </View>
 
+
       {/* 📜 RELIC DETAILS */}
-      <BaseModal visible={!!selectedItem} onClose={() => setSelectedItem(null)} position="bottom">
-        {selectedItem && (() => {
-          const meta = itemTemplates[selectedItem.itemCode];
-          const isEquipped = equippedIds.includes(selectedItem.id);
-          return (
-            <View className="pb-8 pt-4 items-center">
-               <View className="w-24 h-24 bg-slate-900 border border-white/10 rounded-[32px] items-center justify-center mb-8">
-                  <Text className="text-4xl">{meta?.emoji}</Text>
-               </View>
-
-               <Text className="text-white text-2xl font-pixel-bold uppercase text-center mb-2 tracking-tight">{meta?.name}</Text>
-               <View className="flex-row items-center mb-8 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
-                  <Text className="text-indigo-400 text-[9px] font-pixel-bold uppercase tracking-widest">{meta?.rarityId}</Text>
-                  <View className="w-1 h-1 rounded-full bg-slate-700 mx-3" />
-                  <Text className="text-slate-500 text-[9px] font-pixel-bold uppercase tracking-widest">{meta?.type}</Text>
-               </View>
-
-               <View className="bg-slate-900/50 p-6 rounded-[32px] border border-white/5 mb-10 w-full">
-                  <Text className="text-slate-400 text-xs leading-relaxed text-center font-sans italic mb-4">&quot;{meta?.description || "An artifact of unknown origin, pulsing with latent energy."}&quot;</Text>
-                  
-                  {(selectedItem.rolledAtk || selectedItem.rolledDef || selectedItem.rolledStr || selectedItem.rolledAgi || selectedItem.rolledInt || selectedItem.rolledLuk || meta?.atk || meta?.def) ? (
-                    <View className="flex-row flex-wrap justify-center pt-4 border-t border-white/5">
-                       {(meta?.atk || selectedItem.rolledAtk) ? <View className="px-3 py-1 bg-rose-500/10 rounded-full mr-2 mb-2 border border-rose-500/20"><Text className="text-rose-400 text-[8px] font-pixel-bold">ATK +{(meta?.atk || 0) + (selectedItem.rolledAtk || 0)}</Text></View> : null}
-                       {(meta?.def || selectedItem.rolledDef) ? <View className="px-3 py-1 bg-emerald-500/10 rounded-full mr-2 mb-2 border border-emerald-500/20"><Text className="text-emerald-400 text-[8px] font-pixel-bold">DEF +{(meta?.def || 0) + (selectedItem.rolledDef || 0)}</Text></View> : null}
-                       {selectedItem.rolledStr ? <View className="px-3 py-1 bg-orange-500/10 rounded-full mr-2 mb-2 border border-orange-500/20"><Text className="text-orange-400 text-[8px] font-pixel-bold">STR +{selectedItem.rolledStr}</Text></View> : null}
-                       {selectedItem.rolledAgi ? <View className="px-3 py-1 bg-sky-500/10 rounded-full mr-2 mb-2 border border-sky-500/20"><Text className="text-sky-400 text-[8px] font-pixel-bold">AGI +{selectedItem.rolledAgi}</Text></View> : null}
-                       {selectedItem.rolledInt ? <View className="px-3 py-1 bg-purple-500/10 rounded-full mr-2 mb-2 border border-purple-500/20"><Text className="text-purple-400 text-[8px] font-pixel-bold">INT +{selectedItem.rolledInt}</Text></View> : null}
-                       {selectedItem.rolledLuk ? <View className="px-3 py-1 bg-yellow-500/10 rounded-full mr-2 mb-2 border border-yellow-500/20"><Text className="text-yellow-400 text-[8px] font-pixel-bold">LUK +{selectedItem.rolledLuk}</Text></View> : null}
-                    </View>
-                  ) : null}
-               </View>
-
-               <View className="w-full space-y-4">
-                 {meta?.type === "EQUIPMENT" && (
-                   <StandardButton 
-                     label={isEquipped ? "Currently Bound" : "Bind to Spirit"}
-                     onPress={() => isEquipped ? null : handleEquip(selectedItem.id)}
-                     variant={isEquipped ? "secondary" : "primary"}
-                     disabled={isEquipped}
-                     size="lg"
-                     className="w-full"
-                   />
-                 )}
-
-                 {!isEquipped && (
-                    <StandardButton 
-                      label="List on Market"
-                      onPress={() => setIsMarketModalVisible(true)}
-                      variant="secondary"
-                      size="lg"
-                      className="w-full"
-                    />
-                 )}
-                 
-                 <Pressable onPress={() => setSelectedItem(null)} className="w-full py-2 items-center">
-                   <Text className="text-slate-600 text-[8px] font-pixel-bold uppercase tracking-[4px]">Close</Text>
-                 </Pressable>
-               </View>
-            </View>
-          );
-        })()}
-      </BaseModal>
+      <ItemDetailModal 
+        visible={!!selectedItem} 
+        onClose={() => setSelectedItem(null)} 
+        item={selectedItem}
+        template={selectedItem ? itemTemplates[selectedItem.itemCode] : null}
+        isEquipped={selectedItem ? equippedIds.includes(selectedItem.id) : false}
+        onEquip={handleEquip}
+        onMarketList={() => setIsMarketModalVisible(true)}
+      />
 
       <MarketListModal 
         visible={isMarketModalVisible}

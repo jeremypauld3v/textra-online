@@ -85,20 +85,17 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
 
 const RootLayoutNav = () => {
   return (
-    <NavigationGuard>
-      <SocketProvider>
-        <Stack 
-          screenOptions={{ 
-            headerShown: false, 
-            contentStyle: { backgroundColor: "#000000" },
-            animation: 'fade_from_bottom',
-            animationDuration: 200,
-          }} 
-        />
-        <GlobalUI />
-        <Toast config={toastConfig} />
-      </SocketProvider>
-    </NavigationGuard>
+    <SocketProvider>
+      <Stack 
+        screenOptions={{ 
+          headerShown: false, 
+          contentStyle: { backgroundColor: "#000000" },
+          animation: 'fade_from_bottom',
+          animationDuration: 200,
+        }} 
+      />
+      <GlobalUI />
+    </SocketProvider>
   );
 };
 
@@ -125,7 +122,10 @@ export default function RootLayout() {
   return (
     <KeyboardProvider>
       <SafeAreaProvider>
-        <RootLayoutNav />
+        <NavigationGuard>
+          <RootLayoutNav />
+        </NavigationGuard>
+        <Toast config={toastConfig} autoHide={true} visibilityTime={3000} />
       </SafeAreaProvider>
     </KeyboardProvider>
   );

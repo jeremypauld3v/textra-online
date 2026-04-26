@@ -10,6 +10,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, w
 // UI Components
 import ProgressBar from "../components/ui/ProgressBar";
 import { GAME_CONFIG } from "../constants/GameConfig";
+import EncounterRewardModal from "../components/EncounterRewardModal";
 
 const IDLE_SPRITE = require("../assets/sprites/beta_character_idle_side.gif");
 const ATTACK_SPRITE = require("../assets/sprites/beta_character_attack.gif");
@@ -24,6 +25,7 @@ export default function EncounterScreen() {
   const [simStarted, setSimStarted] = useState(false);
   const [isPlayerAttacking, setIsPlayerAttacking] = useState(false);
   const [isEnemyAttacking, setIsEnemyAttacking] = useState(false);
+  const [showRewards, setShowRewards] = useState(false);
   
   const playerPosX = useSharedValue(0);
   const playerRotation = useSharedValue(0);
@@ -88,13 +90,18 @@ export default function EncounterScreen() {
     }
     if (simTurn === simBattle.log.logDetails.length - 1) {
       const t = setTimeout(() => {
-        setSimBattle(null);
-        setSimTurn(0);
-        setSimStarted(false);
+        setShowRewards(true);
       }, GAME_CONFIG.BATTLE_END_DELAY + 500);
       return () => clearTimeout(t);
     }
   }, [simBattle, simTurn, simStarted, triggerAnimation, setSimBattle]);
+
+  const handleEncounterEnd = useCallback(() => {
+    setShowRewards(false);
+    setSimBattle(null);
+    setSimTurn(0);
+    setSimStarted(false);
+  }, [setSimBattle]);
 
   const combatSim = useMemo(() => {
     if (!simBattle || !simStarted) return null;
@@ -144,6 +151,18 @@ export default function EncounterScreen() {
     <View className="flex-1 bg-[#020617]">
       <Animated.View style={[StyleSheet.absoluteFill, flashStyle, { backgroundColor: "white", zIndex: 99 }]} pointerEvents="none" />
       
+      {simBattle && (
+        <EncounterRewardModal
+          visible={showRewards}
+          onClose={handleEncounterEnd}
+          isWin={!!simBattle.isWin}
+          lootedItems={simBattle.lootedItems}
+          experienceGained={simBattle.experienceGained}
+          goldGained={simBattle.goldGained}
+          message={simBattle.message}
+        />
+      )}
+
       {!simBattle || !simStarted ? (
         <View className="flex-1 justify-center items-center px-12">
            <ActivityIndicator size="small" color="#818cf8" />

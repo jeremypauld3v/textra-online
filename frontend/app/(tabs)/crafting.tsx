@@ -1,4 +1,4 @@
-import { View, Text, Pressable, ActivityIndicator, FlatList, Alert, ScrollView } from "react-native";
+import { View, Text, ActivityIndicator, FlatList, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useCallback, useMemo } from "react";
 import { useFocusEffect } from "expo-router";
@@ -6,17 +6,20 @@ import { gameApi, InventoryItem } from "../../api/game";
 import { useGameStore } from "../../store/useGameStore";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
-import Animated, { FadeIn } from "react-native-reanimated";
 
 // UI Components
 import ScreenHeader from "../../components/ui/ScreenHeader";
 import StandardButton from "../../components/ui/StandardButton";
+import TabBar from "../../components/ui/TabBar";
+import Card from "../../components/ui/Card";
+import SearchBar from "../../components/ui/SearchBar";
 
 const CATEGORIES = ["ALL", "EQUIPMENT", "CONSUMABLE", "MATERIAL"];
 
 export default function CraftingScreen() {
   const insets = useSafeAreaInsets();
   const [selectedType, setSelectedType] = useState("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [recipes, setRecipes] = useState<any[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -47,9 +50,20 @@ export default function CraftingScreen() {
   };
 
   const filteredRecipes = useMemo(() => {
-    if (selectedType === "ALL") return recipes;
-    return recipes.filter((r: any) => itemTemplates[r.resultItemCode]?.type === selectedType);
-  }, [recipes, selectedType, itemTemplates]);
+    let list = recipes;
+    if (selectedType !== "ALL") {
+      list = list.filter((r: any) => itemTemplates[r.resultItemCode]?.type === selectedType);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((r: any) => {
+        const meta = itemTemplates[r.resultItemCode];
+        return meta?.name.toLowerCase().includes(q) || r.resultItemCode.toLowerCase().includes(q);
+      });
+    }
+    return list;
+  }, [recipes, selectedType, itemTemplates, searchQuery]);
 
   const handleCraft = async (recipeId: string) => {
     Alert.alert(
@@ -94,22 +108,18 @@ export default function CraftingScreen() {
           badge={`${recipes.length} Blueprints`}
         />
 
-        {/* 🧭 FILTER SEALS */}
-        <View className="h-12 mb-8 bg-slate-900/40 p-1.5 rounded-2xl border border-white/5">
-           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View className="flex-row space-x-2">
-                 {CATEGORIES.map((cat) => (
-                   <Pressable 
-                     key={cat} 
-                     onPress={() => setSelectedType(cat)} 
-                     className={`px-6 py-2 rounded-xl border ${selectedType === cat ? "bg-slate-800 border-white/10" : "border-transparent"}`}
-                   >
-                      <Text className={`text-[8px] font-pixel-bold uppercase tracking-widest ${selectedType === cat ? "text-white" : "text-slate-600"}`}>{cat}</Text>
-                   </Pressable>
-                 ))}
-              </View>
-           </ScrollView>
-        </View>
+        <SearchBar 
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Filter blueprints..."
+        />
+
+        <TabBar 
+          tabs={CATEGORIES} 
+          activeTab={selectedType} 
+          onTabChange={setSelectedType} 
+          className="mb-8"
+        />
 
         {/* 📜 RECIPE LIST */}
         <FlatList
@@ -120,8 +130,7 @@ export default function CraftingScreen() {
             const meta = itemTemplates[r.resultItemCode];
             const canCraft = r.ingredients.every((ing: any) => getOwnedQuantity(ing.itemCode) >= ing.quantity);
             return (
-              <Animated.View entering={FadeIn.delay(index * 20).duration(300)} className="mb-4 bg-slate-900/60 p-4 rounded-2xl border border-white/5 overflow-hidden relative">
-                <View style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, backgroundColor: canCraft ? 'rgba(16, 185, 129, 0.05)' : 'rgba(244, 63, 94, 0.02)', borderRadius: 30, transform: [{ scale: 2 }] }} />
+              <Card delay={index * 20} variant="flat" padding="default" className="mb-4">
                 
                 <View className="flex-row items-center mb-4">
                    <View className="w-12 h-12 bg-black/40 rounded-xl items-center justify-center border border-white/10 mr-4">
@@ -156,7 +165,7 @@ export default function CraftingScreen() {
                      );
                    })}
                 </View>
-              </Animated.View>
+              </Card>
             );
           }}
           ListEmptyComponent={

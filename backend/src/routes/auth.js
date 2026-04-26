@@ -30,7 +30,22 @@ export async function authRoutes(server) {
                 include: { characters: true },
             });
             const character = newUser.characters[0];
-            return reply.send({ success: true, message: "Registration successful" });
+            if (!character) {
+                return reply.status(500).send({ error: "Failed to create character" });
+            }
+            // Generate JWT Token for immediate login
+            const token = server.jwt.sign({
+                userId: newUser.id,
+                characterId: character.id,
+                email: newUser.email
+            });
+            return reply.send({
+                success: true,
+                message: "Registration successful",
+                token,
+                characterId: character.id,
+                userId: newUser.id
+            });
         }
         catch (err) {
             server.log.error(err);

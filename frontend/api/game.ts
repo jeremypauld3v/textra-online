@@ -64,6 +64,26 @@ export interface CharacterStatus {
   dungeonState?: any;
 }
 
+export interface ItemTemplate {
+  code: string;
+  name: string;
+  emoji: string;
+  type: "EQUIPMENT" | "CONSUMABLE" | "MATERIAL" | "CURRENCY" | "MISC";
+  rarity: any; // Can be string or object
+  rarityId: string;
+  description?: string;
+  levelReq: number;
+  statAtk?: number;
+  statDef?: number;
+  statStr?: number;
+  statAgi?: number;
+  statInt?: number;
+  statLuk?: number;
+  statDex?: number;
+  statHeal?: number;
+  statEnergy?: number;
+}
+
 export interface InventoryItem {
   id: string;
   characterId: string;

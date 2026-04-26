@@ -1,10 +1,35 @@
 import { prisma } from "../lib/prisma.js";
 import { gameDataManager } from "./gameDataManager.js";
+import { GAME_BALANCE } from "../constants/gameBalance.js";
 /**
  * 🛡️ EquipmentService
  * Handles the logic for equipping and unequipping gear.
  */
 export class EquipmentService {
+    /**
+     * 🎲 EQUIPMENT STAT ROLLER
+     * Generates random variances for item stats.
+     */
+    generateEquipmentRolls(stats, template) {
+        const luckBonus = (stats.luk * 0.005); // 100 LUK = +50% roll floor improvement
+        const minMult = (template.minRoll ?? 0.8) + luckBonus;
+        const maxMult = (template.maxRoll ?? 1.2) + luckBonus;
+        const roll = (base) => {
+            if (!base)
+                return null;
+            const mult = Math.min(2.0, minMult + (Math.random() * (maxMult - minMult)));
+            const rolled = Math.floor(base * mult);
+            return Math.min(GAME_BALANCE.MAX_STAT_VALUE, rolled);
+        };
+        return {
+            rolledAtk: roll(template.statAtk),
+            rolledDef: roll(template.statDef),
+            rolledStr: roll(template.statStr),
+            rolledAgi: roll(template.statAgi),
+            rolledInt: roll(template.statInt),
+            rolledLuk: roll(template.statLuk),
+        };
+    }
     statsCache = new Map();
     CACHE_TTL = 5000; // 5 seconds cache for stats
     /**
@@ -159,6 +184,7 @@ export class EquipmentService {
             finalAtk += (totalStr * 1.5); // Unarmed penalty
         }
         const finalDef = (totalAgi * 1) + totalDef;
+        const finalMaxEnergy = 100 + (totalInt * 1);
         const finalStats = {
             atk: finalAtk,
             def: finalDef,
@@ -166,7 +192,8 @@ export class EquipmentService {
             agi: totalAgi,
             dex: character.dex,
             int: totalInt,
-            luk: totalLuk
+            luk: totalLuk,
+            maxEnergy: finalMaxEnergy
         };
         // Save to cache
         this.statsCache.set(characterId, { stats: finalStats, timestamp: Date.now() });

@@ -39,7 +39,8 @@ export default function MarketListModal({ visible, item, onConfirm, onCancel }: 
             <StandardButton
               icon="remove"
               variant="secondary"
-              className="w-10 h-10 rounded-xl"
+              size="sm"
+              className="w-10 h-10 rounded-xl p-0"
               onPress={() => setQuantity((prev) => Math.max(1, parseInt(prev || "0") - 1).toString())}
             />
             <TextInput
@@ -51,7 +52,8 @@ export default function MarketListModal({ visible, item, onConfirm, onCancel }: 
             <StandardButton
               icon="add"
               variant="secondary"
-              className="w-10 h-10 rounded-xl"
+              size="sm"
+              className="w-10 h-10 rounded-xl p-0"
               onPress={() => setQuantity((prev) => Math.min(max, parseInt(prev || "0") + 1).toString())}
             />
           </View>
