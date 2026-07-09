@@ -42,28 +42,28 @@ export default function EncounterRewardModal({
   if (!visible) return null;
 
   return (
-    <BaseModal visible={visible} onClose={onClose} showClose={false} position="center" className="bg-slate-950 border-emerald-500/20">
+    <BaseModal visible={visible} onClose={onClose} showClose={false} position="center" className="bg-[#0a0a0a] border-mystic/10">
       <View className="items-center py-4">
         {/* Victory/Defeat Header */}
-        <Animated.View entering={FadeInDown.duration(400)} className="items-center mb-8">
-           <View className={`w-24 h-24 rounded-full items-center justify-center border-4 ${isWin ? "border-emerald-500/30 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.3)]" : "border-rose-500/30 bg-rose-500/10 shadow-[0_0_30px_rgba(244,63,94,0.3)]"}`}>
+        <Animated.View entering={FadeInDown.duration(400)} className="items-center mb-6">
+           <View className={`w-20 h-20 rounded-full items-center justify-center border-2 ${isWin ? "border-verdant/30 bg-verdant/5" : "border-crimson/20 bg-crimson/[0.02]"}`}>
              <Ionicons 
                name={isWin ? "trophy" : "skull"} 
-               size={48} 
-               color={isWin ? "#34d399" : "#fb7185"} 
+               size={36} 
+               color={isWin ? "#10B981" : "#EF4444"} 
              />
            </View>
            
-           <View className="mt-4 items-center">
-             <Text className={`text-4xl font-sans font-black uppercase tracking-tighter ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+           <View className="mt-3 items-center">
+             <Text className={`text-3xl font-sans font-black uppercase tracking-tighter ${isWin ? "text-verdant" : "text-crimson"}`}>
                {isWin ? "Victory" : "Defeat"}
              </Text>
-             <View className={`h-1 w-12 rounded-full mt-1 ${isWin ? "bg-emerald-500/50" : "bg-rose-500/50"}`} />
+             <View className={`h-[1px] w-8 mt-1 ${isWin ? "bg-verdant/30" : "bg-crimson/30"}`} />
            </View>
 
            {message && (
-             <View className="mt-4 px-6">
-                <Text className="text-slate-400 text-[10px] font-pixel-bold uppercase text-center leading-relaxed tracking-wider opacity-80">
+             <View className="mt-3 px-4">
+                <Text className="text-white/50 text-[8px] font-pixel-bold uppercase text-center leading-relaxed tracking-wider">
                   {message}
                 </Text>
              </View>
@@ -72,40 +72,40 @@ export default function EncounterRewardModal({
 
         <View className="w-full">
           {/* Rewards Summary Row */}
-          <View className="flex-row gap-4 mb-8">
+          <View className="flex-row gap-3 mb-6">
             {experienceGained > 0 && (
-              <Animated.View entering={FadeInDown.delay(200)} className="flex-1 bg-indigo-500/10 border border-indigo-500/20 rounded-3xl p-4 items-center">
-                <Ionicons name="sparkles" size={16} color="#818cf8" style={{ marginBottom: 4 }} />
-                <Text className="text-indigo-400 text-xl font-bold">+{experienceGained.toLocaleString()}</Text>
-                <Text className="text-indigo-400/60 text-[10px] uppercase font-black tracking-widest">Experience</Text>
+              <Animated.View entering={FadeInDown.delay(100)} className="flex-1 bg-mystic/5 border border-mystic/10 rounded-2xl p-3 items-center">
+                <Ionicons name="sparkles" size={14} color="#A78BFA" style={{ marginBottom: 2 }} />
+                <Text className="text-frost text-lg font-bold">+{experienceGained.toLocaleString()}</Text>
+                <Text className="text-frost-muted text-[8px] uppercase font-black tracking-widest">Experience</Text>
               </Animated.View>
             )}
             {goldGained > 0 && (
-              <Animated.View entering={FadeInDown.delay(300)} className="flex-1 bg-amber-500/10 border border-amber-500/20 rounded-3xl p-4 items-center">
-                <Ionicons name="wallet" size={16} color="#fbbf24" style={{ marginBottom: 4 }} />
-                <Text className="text-amber-400 text-xl font-bold">+{goldGained.toLocaleString()}</Text>
-                <Text className="text-amber-400/60 text-[10px] uppercase font-black tracking-widest">Gold Coins</Text>
+              <Animated.View entering={FadeInDown.delay(150)} className="flex-1 bg-gold/5 border border-gold/10 rounded-2xl p-3 items-center">
+                <Ionicons name="wallet" size={14} color="#F59E0B" style={{ marginBottom: 2 }} />
+                <Text className="text-gold text-lg font-bold">+{goldGained.toLocaleString()}</Text>
+                <Text className="text-gold/30 text-[8px] uppercase font-black tracking-widest">Gold Coins</Text>
               </Animated.View>
             )}
           </View>
 
           {/* Loot Section */}
           <View className="w-full">
-            <View className="flex-row justify-between items-end mb-4 px-2">
-                <Text className="text-slate-400 text-xs font-black uppercase tracking-widest">Loot Secured</Text>
-                <Text className="text-slate-600 text-[10px] font-bold">{lootedItems.length} ITEMS</Text>
+            <View className="flex-row justify-between items-end mb-2.5 px-1">
+                <Text className="text-white/50 text-[9px] font-black uppercase tracking-widest">Loot Secured</Text>
+                <Text className="text-white/20 text-[8px] font-bold">{lootedItems.length} ITEMS</Text>
             </View>
 
-            <View className="bg-slate-900/50 rounded-[32px] border border-white/5 p-4 min-h-[120px]">
+            <View className="bg-white/[0.02] rounded-2xl border border-white/10 p-3 min-h-[90px]">
               {lootedItems.length > 0 ? (
-                <View className="flex-row flex-wrap justify-start gap-4">
+                <View className="flex-row flex-wrap justify-start gap-3">
                   {lootedItems.map((loot, index) => {
                     const template = itemTemplates[loot.itemCode];
                     if (!template) return null;
                     return (
                       <Animated.View 
                         key={`${loot.itemCode}-${index}`}
-                        entering={ZoomIn.delay(400 + index * 100).duration(300)}
+                        entering={ZoomIn.delay(200 + index * 50).duration(200)}
                         layout={Layout}
                       >
                         <ItemIcon 
@@ -120,9 +120,9 @@ export default function EncounterRewardModal({
                   })}
                 </View>
               ) : (
-                <View className="flex-1 items-center justify-center py-6">
-                  <Ionicons name="cube-outline" size={32} color="#334155" />
-                  <Text className="text-slate-600 text-xs font-bold uppercase mt-2 italic">No treasures found</Text>
+                <View className="flex-1 items-center justify-center py-4">
+                  <Ionicons name="cube-outline" size={24} color="rgba(255,255,255,0.2)" />
+                  <Text className="text-white/30 text-[9px] font-bold uppercase mt-1 italic">No treasures found</Text>
                 </View>
               )}
             </View>
@@ -133,7 +133,7 @@ export default function EncounterRewardModal({
           label="CONTINUE JOURNEY" 
           variant="primary" 
           onPress={onClose} 
-          className="w-full mt-10 h-16 rounded-3xl shadow-xl shadow-emerald-500/10"
+          className="w-full mt-6 h-12 rounded-xl"
         />
       </View>
 

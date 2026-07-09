@@ -20,7 +20,8 @@ import {
   Eye,
   TreePine,
   Map,
-  Hammer
+  Hammer,
+  ShieldAlert
 } from 'lucide-react'
 import { 
   adminApi, 
@@ -36,7 +37,8 @@ import {
   type InventoryItem,
   type LootTableEntry,
   type CraftingRecipe,
-  type RecipeIngredient
+  type RecipeIngredient,
+  type UserReport
 } from './api/admin'
 import { useAdminStore } from './store/useAdminStore'
 import axios from 'axios'
@@ -75,7 +77,7 @@ function Navbar() {
       <div className="flex items-center gap-6 flex-1">
         <div className="flex items-center gap-2">
             <ShieldCheck className="text-accent" />
-            <span className="font-pixel text-xl tracking-wider text-white">TEXTRA ADMIN</span>
+            <span className="font-pixel text-xl tracking-wider text-white">SPRITEHERO ADMIN</span>
         </div>
         
         {/* Global Broadcast Bar */}
@@ -123,6 +125,7 @@ function Sidebar() {
     { to: '/zones', icon: Map, label: 'World Zones' },
     { to: '/market', icon: ShoppingBag, label: 'Marketplace' },
     { to: '/config', icon: Settings, label: 'Settings' },
+    { to: '/reports', icon: ShieldAlert, label: 'Signals & Feedback' },
   ]
 
   return (
@@ -262,7 +265,7 @@ function Resources() {
         <h1 className="text-3xl font-bold text-white tracking-tight">Resource Templates</h1>
         <button onClick={() => { 
             setEditItem(null); 
-            setFormData({ code: '', name: '', emoji: '📦', rarityId: 'COMMON', type: 'MATERIAL', description: '', levelReq: 1 });
+            setFormData({ code: '', name: '', emoji: '📦', rarityId: 'COMMON', type: 'MATERIAL', description: '', levelReq: 1, sprites: { icon: '' } });
             setIsModalOpen(true); 
         }} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
@@ -346,7 +349,7 @@ function Resources() {
                     <div className="flex gap-1 justify-end">
                       <button onClick={() => {
                           setEditItem(item);
-                          setFormData(item);
+                          setFormData({ ...item, sprites: item.sprites || { icon: '' } });
                           setIsModalOpen(true);
                       }} className="p-2 hover:bg-accent/20 rounded-lg text-accent transition-all hover:scale-110"><Edit2 size={16} /></button>
                       <button onClick={async () => {
@@ -419,6 +422,18 @@ function Resources() {
                 )}
               </div>
 
+              {formData.type === 'EQUIPMENT' && formData.equipSlot === 'WEAPON' && (
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Class Type</label>
+                    <select value={formData.classType || ''} onChange={e => setFormData({...formData, classType: e.target.value})} className="input-field w-full py-2 bg-dark-700">
+                        <option value="">Any (Hybrid)</option>
+                        <option value="WARRIOR">Warrior (STR scaling)</option>
+                        <option value="ARCHER">Archer (AGI scaling)</option>
+                        <option value="MAGE">Mage (INT scaling)</option>
+                    </select>
+                </div>
+              )}
+
               {formData.type === 'CONSUMABLE' && (
                 <div className="p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/20 space-y-3">
                     <h4 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Restoration Effects</h4>
@@ -427,7 +442,7 @@ function Resources() {
                             <label className="text-[9px] font-bold text-gray-500 uppercase">HP Restore</label>
                             <input 
                                 type="number" 
-                                value={(formData.statHeal as any) || 0} 
+                                value={formData.statHeal ?? 0} 
                                 onChange={e => setFormData({...formData, statHeal: parseInt(e.target.value)})} 
                                 className="input-field w-full py-2 text-xs" 
                             />
@@ -436,7 +451,7 @@ function Resources() {
                             <label className="text-[9px] font-bold text-gray-500 uppercase">Energy Restore</label>
                             <input 
                                 type="number" 
-                                value={(formData.statEnergy as any) || 0} 
+                                value={formData.statEnergy ?? 0}
                                 onChange={e => setFormData({...formData, statEnergy: parseInt(e.target.value)})} 
                                 className="input-field w-full py-2 text-xs" 
                             />
@@ -450,17 +465,17 @@ function Resources() {
                     <div className="p-3 bg-dark-900/50 rounded-xl border border-dark-700 space-y-3">
                         <h4 className="text-[10px] font-black text-accent uppercase tracking-widest">Base Stats</h4>
                         <div className="grid grid-cols-4 gap-3">
-                            {[
+                            {([
                                 {label: 'ATK', key: 'statAtk'}, {label: 'DEF', key: 'statDef'},
                                 {label: 'STR', key: 'statStr'}, {label: 'AGI', key: 'statAgi'},
                                 {label: 'INT', key: 'statInt'}, {label: 'LUK', key: 'statLuk'},
                                 {label: 'DEX', key: 'statDex'}, {label: 'HEAL', key: 'statHeal'}
-                            ].map(stat => (
+                            ] as const).map(stat => (
                                 <div key={stat.key} className="space-y-1">
                                     <label className="text-[9px] font-bold text-gray-500 uppercase">{stat.label}</label>
                                     <input 
                                         type="number" 
-                                        value={(formData[stat.key as keyof ItemTemplate] as any) || 0} 
+                                        value={formData[stat.key] ?? 0}
                                         onChange={e => setFormData({...formData, [stat.key]: parseInt(e.target.value)})} 
                                         className="input-field w-full py-1.5 text-xs" 
                                     />
@@ -498,6 +513,54 @@ function Resources() {
                 </>
               )}
 
+              {formData.type === 'EQUIPMENT' && (
+                <div className="p-3 bg-purple-500/5 rounded-xl border border-purple-500/20 space-y-3">
+                    <h4 className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Unique Modifiers (%)</h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-gray-500 uppercase">Life Steal</label>
+                        <input type="number" step="0.1" value={formData.statLifesteal || 0} onChange={e => setFormData({...formData, statLifesteal: parseFloat(e.target.value) || 0})} className="input-field w-full py-1.5 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-gray-500 uppercase">Thorns</label>
+                        <input type="number" step="0.1" value={formData.statThorns || 0} onChange={e => setFormData({...formData, statThorns: parseFloat(e.target.value) || 0})} className="input-field w-full py-1.5 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-gray-500 uppercase">Gold Bonus</label>
+                        <input type="number" step="0.1" value={formData.statGoldBonus || 0} onChange={e => setFormData({...formData, statGoldBonus: parseFloat(e.target.value) || 0})} className="input-field w-full py-1.5 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-gray-500 uppercase">EXP Bonus</label>
+                        <input type="number" step="0.1" value={formData.statExpBonus || 0} onChange={e => setFormData({...formData, statExpBonus: parseFloat(e.target.value) || 0})} className="input-field w-full py-1.5 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-gray-500 uppercase">Move Speed</label>
+                        <input type="number" step="0.1" value={formData.statMoveSpeed || 0} onChange={e => setFormData({...formData, statMoveSpeed: parseFloat(e.target.value) || 0})} className="input-field w-full py-1.5 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-gray-500 uppercase">HP Regen</label>
+                        <input type="number" step="0.1" value={formData.statHpRegen || 0} onChange={e => setFormData({...formData, statHpRegen: parseFloat(e.target.value) || 0})} className="input-field w-full py-1.5 text-xs" />
+                      </div>
+                    </div>
+                </div>
+              )}
+
+              <div className="p-3 bg-dark-900/50 rounded-xl border border-dark-700 space-y-3">
+                  <h4 className="text-[10px] font-black text-accent uppercase tracking-widest">Sprite Icon Asset</h4>
+                  <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-500 uppercase">Sprite URL / Path</label>
+                      <input 
+                        value={formData.sprites?.icon || ''} 
+                        onChange={e => setFormData({
+                          ...formData, 
+                          sprites: { ...(formData.sprites || {}), icon: e.target.value }
+                        })} 
+                        className="input-field w-full py-2 text-xs" 
+                        placeholder="Ex: /assets/sprites/items/iron_sword.png" 
+                      />
+                  </div>
+              </div>
+
               <div className="space-y-1">
                   <label className="text-[10px] font-bold text-gray-500 uppercase">Description</label>
                   <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="input-field w-full py-2 h-20 text-sm" />
@@ -520,6 +583,8 @@ function Players() {
   const [spawnItemCode, setSpawnItemCode] = useState("")
   const [spawnQty, setSpawnQty] = useState(1)
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
+  const [banTarget, setBanTarget] = useState<Character | null>(null)
+  const [banReason, setBanReason] = useState("")
 
   const toggleItemSelection = (itemId: string) => {
     setSelectedItemIds(prev => 
@@ -575,6 +640,32 @@ function Players() {
     const res = await adminApi.getPlayerDetail(id)
     setSelectedPlayer(res.data)
     setEditData(res.data)
+  }
+
+  const handleBan = async () => {
+    if (!banTarget) return
+    try {
+      await adminApi.banPlayer(banTarget.id, banReason || undefined)
+      alert(`${banTarget.name} has been banned.`)
+      setBanTarget(null)
+      setBanReason("")
+      fetchPlayers()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      alert('Failed to ban player: ' + message)
+    }
+  }
+
+  const handleUnban = async (id: string, name: string) => {
+    if (!confirm(`Unban ${name}?`)) return
+    try {
+      await adminApi.unbanPlayer(id)
+      alert(`${name} has been unbanned.`)
+      fetchPlayers()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      alert('Failed to unban player: ' + message)
+    }
   }
 
   const handleViewDetails = async (id: string) => {
@@ -651,14 +742,22 @@ function Players() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {filtered.map((player: Character) => (
-          <div key={player.id} className="card hover:border-accent/40 transition-all group">
+          <div key={player.id} className={cn("card hover:border-accent/40 transition-all group", player.isBanned && "border-rose-500/30 bg-rose-500/5")}>
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
                     {player.name}
+                    {player.isBanned && (
+                      <span className="text-[9px] font-black uppercase bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded border border-rose-500/30">
+                        BANNED
+                      </span>
+                    )}
                     {player.actionStatus === 'ENCOUNTER' && <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />}
                 </h3>
                 <p className="text-gray-500 text-xs font-mono">{player.user.email}</p>
+                {player.isBanned && player.banReason && (
+                  <p className="text-rose-400/70 text-[10px] mt-1 italic">Reason: {player.banReason}</p>
+                )}
               </div>
               <div className="bg-dark-900 px-3 py-1.5 rounded-xl border border-dark-700 shadow-inner">
                 <span className="text-accent text-[10px] font-black uppercase tracking-widest">LVL {player.level}</span>
@@ -687,6 +786,23 @@ function Players() {
                 <button onClick={() => handleViewDetails(player.id)} className="p-2.5 bg-dark-900 border border-dark-600 rounded-xl text-gray-400 hover:text-white transition-colors">
                     <Eye size={16} />
                 </button>
+                {player.isBanned ? (
+                  <button 
+                    onClick={() => handleUnban(player.id, player.name)} 
+                    className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                    title="Unban player"
+                  >
+                    <ShieldCheck size={16} />
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => { setBanTarget(player); setBanReason(""); }} 
+                    className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
+                    title="Ban player"
+                  >
+                    <ShieldAlert size={16} />
+                  </button>
+                )}
             </div>
           </div>
         ))}
@@ -849,6 +965,47 @@ function Players() {
                     className="btn-primary w-full py-3 disabled:opacity-50"
                   >
                       Manifest Item
+                  </button>
+              </div>
+          </div>
+      </Modal>
+
+      {/* Ban Confirmation Modal */}
+      <Modal isOpen={!!banTarget} onClose={() => { setBanTarget(null); setBanReason(""); }} title={`Ban Player: ${banTarget?.name}`}>
+          <div className="space-y-6">
+              <div className="card bg-rose-500/5 border border-rose-500/20 rounded-xl p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <ShieldAlert size={20} className="text-rose-400" />
+                  <p className="text-rose-300 font-bold text-sm">Confirm Ban</p>
+                </div>
+                <p className="text-gray-400 text-xs">
+                  This will prevent <span className="text-white font-bold">{banTarget?.name}</span> from connecting or performing any actions.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Reason (optional)</label>
+                  <input 
+                    type="text"
+                    placeholder="Reason for ban..."
+                    value={banReason}
+                    onChange={e => setBanReason(e.target.value)}
+                    className="input-field w-full py-2.5"
+                  />
+              </div>
+
+              <div className="pt-4 border-t border-dark-700 flex gap-3">
+                  <button 
+                    onClick={() => { setBanTarget(null); setBanReason(""); }}
+                    className="flex-1 bg-dark-800 border border-dark-600 text-gray-400 py-3 rounded-xl text-sm font-bold hover:text-white transition-colors"
+                  >
+                      Cancel
+                  </button>
+                  <button 
+                    onClick={handleBan}
+                    className="flex-1 bg-rose-600 hover:bg-rose-500 text-white py-3 rounded-xl text-sm font-bold transition-colors"
+                  >
+                      Ban Player
                   </button>
               </div>
           </div>
@@ -1226,7 +1383,7 @@ function Nodes() {
         <h1 className="text-3xl font-bold text-white tracking-tight">Gathering Nodes</h1>
         <button onClick={() => {
             setEditNode(null);
-            setFormData({ name: '', type: 'Mining', icon: '⛏️', baseHp: 20, xpReward: 5, lootTable: [] });
+            setFormData({ name: '', type: 'Mining', icon: '⛏️', baseHp: 20, xpReward: 5, lootTable: [], sprites: { icon: '' } });
             setIsModalOpen(true);
         }} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
@@ -1246,7 +1403,8 @@ function Nodes() {
                               icon: node.icon,
                               baseHp: node.baseHp,
                               xpReward: node.xpReward,
-                              lootTable: node.lootTable || []
+                              lootTable: node.lootTable || [],
+                              sprites: node.sprites || { icon: '' }
                           });
                           setIsModalOpen(true);
                       }} className="p-2 bg-dark-900 rounded-lg text-accent hover:text-white border border-dark-600"><Edit2 size={14} /></button>
@@ -1383,6 +1541,22 @@ function Nodes() {
                           </div>
                       ))}
                       {formData.lootTable?.length === 0 && <p className="text-center py-4 text-[10px] text-gray-600 italic">No resources defined for this node</p>}
+                  </div>
+              </div>
+
+              <div className="p-3 bg-dark-900/50 rounded-xl border border-dark-700 space-y-3">
+                  <h4 className="text-[10px] font-black text-accent uppercase tracking-widest">Sprite Icon Asset</h4>
+                  <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-500 uppercase">Sprite URL / Path</label>
+                      <input 
+                        value={formData.sprites?.icon || ''} 
+                        onChange={e => setFormData({
+                          ...formData, 
+                          sprites: { ...(formData.sprites || {}), icon: e.target.value }
+                        })} 
+                        className="input-field w-full py-2 text-xs" 
+                        placeholder="Ex: /assets/sprites/nodes/iron_ore.png" 
+                      />
                   </div>
               </div>
 
@@ -1545,7 +1719,7 @@ function Monsters() {
         <h1 className="text-3xl font-bold text-white">Bestiary Registry</h1>
         <button onClick={() => {
             setEditMonster(null);
-            setFormData({ name: '', hp: 100, attack: 10, defense: 5, expReward: 50, goldReward: 10, minGoldMult: 0.8, maxGoldMult: 1.2, minDepth: 0, isBoss: false, dungeonId: null, lootTable: [] });
+            setFormData({ name: '', hp: 100, attack: 10, defense: 5, expReward: 50, goldReward: 10, minGoldMult: 0.8, maxGoldMult: 1.2, minDepth: 0, isBoss: false, dungeonId: null, lootTable: [], sprites: { idle: '', walk: '', attack: '' } });
             setIsModalOpen(true);
         }} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
@@ -1561,7 +1735,8 @@ function Monsters() {
                     setEditMonster(monster);
                     setFormData({
                         ...monster,
-                        lootTable: monster.lootTable.map((l: LootTableEntry) => ({ itemCode: l.itemCode, chance: l.chance, minQuantity: l.minQuantity, maxQuantity: l.maxQuantity }))
+                        lootTable: monster.lootTable.map((l: LootTableEntry) => ({ itemCode: l.itemCode, chance: l.chance, minQuantity: l.minQuantity, maxQuantity: l.maxQuantity })),
+                        sprites: monster.sprites || { idle: '', walk: '', attack: '' }
                     });
                     setIsModalOpen(true);
                 }} className="p-2 bg-dark-900 rounded-lg text-accent hover:text-white border border-dark-600"><Edit2 size={14} /></button>
@@ -1672,6 +1847,48 @@ function Monsters() {
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase">Max Gold %</label>
                     <input type="number" step="0.1" value={formData.maxGoldMult} onChange={e => setFormData({...formData, maxGoldMult: parseFloat(e.target.value) || 0})} className="input-field w-full py-2" placeholder="1.2" />
+                </div>
+              </div>
+
+              <div className="p-4 bg-dark-900/50 rounded-2xl border border-dark-700 space-y-4">
+                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Sprite & Animations (URLs)</label>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-500 uppercase">Idle Sprite</label>
+                      <input 
+                        value={formData.sprites?.idle || ''} 
+                        onChange={e => setFormData({
+                          ...formData, 
+                          sprites: { ...(formData.sprites || {}), idle: e.target.value }
+                        })} 
+                        className="input-field w-full py-2 text-xs" 
+                        placeholder="Ex: /assets/sprites/orc_idle.gif or https://..." 
+                      />
+                  </div>
+                  <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-500 uppercase">Walk/Run Sprite</label>
+                      <input 
+                        value={formData.sprites?.walk || ''} 
+                        onChange={e => setFormData({
+                          ...formData, 
+                          sprites: { ...(formData.sprites || {}), walk: e.target.value }
+                        })} 
+                        className="input-field w-full py-2 text-xs" 
+                        placeholder="Ex: /assets/sprites/orc_walk.gif" 
+                      />
+                  </div>
+                  <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-500 uppercase">Attack Sprite</label>
+                      <input 
+                        value={formData.sprites?.attack || ''} 
+                        onChange={e => setFormData({
+                          ...formData, 
+                          sprites: { ...(formData.sprites || {}), attack: e.target.value }
+                        })} 
+                        className="input-field w-full py-2 text-xs" 
+                        placeholder="Ex: /assets/sprites/orc_attack.gif" 
+                      />
+                  </div>
                 </div>
               </div>
 
@@ -1931,7 +2148,7 @@ function Dungeons() {
     const [editDungeon, setEditDungeon] = useState<DungeonTemplate | null>(null)
     const [formData, setFormData] = useState<Partial<DungeonTemplate>>({
         name: '', description: '', minDepth: 0, maxDepth: undefined, minLevel: 1, floorCount: 3,
-        lootMultiplier: 1.0, expMultiplier: 1.0, treasureChance: 0.3
+        lootMultiplier: 1.0, expMultiplier: 1.0, treasureChance: 0.3, sprites: { background: '' }
     })
 
     const fetchData = async () => {
@@ -1984,7 +2201,7 @@ function Dungeons() {
                 <h1 className="text-3xl font-bold text-white">Dungeon Architect</h1>
                 <button onClick={() => {
                     setEditDungeon(null);
-                    setFormData({ name: '', description: '', minDepth: 0, maxDepth: undefined, minLevel: 1, floorCount: 3, lootMultiplier: 1.0, expMultiplier: 1.0, treasureChance: 0.3 });
+                    setFormData({ name: '', description: '', minDepth: 0, maxDepth: undefined, minLevel: 1, floorCount: 3, lootMultiplier: 1.0, expMultiplier: 1.0, treasureChance: 0.3, sprites: { background: '' } });
                     setIsModalOpen(true);
                 }} className="btn-primary flex items-center gap-2">
                     <Plus size={18} />
@@ -2000,7 +2217,7 @@ function Dungeons() {
                         <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                             <button onClick={() => {
                                 setEditDungeon(d);
-                                setFormData(d);
+                                setFormData({ ...d, sprites: d.sprites || { background: '' } });
                                 setIsModalOpen(true);
                             }} className="p-2 bg-dark-900 rounded-lg text-accent hover:text-white border border-dark-600"><Edit2 size={14} /></button>
                             <button onClick={() => handleDelete(d.id)} className="p-2 bg-dark-900 rounded-lg text-rose-500 hover:text-white border border-dark-600"><Trash2 size={14} /></button>
@@ -2077,6 +2294,23 @@ function Dungeons() {
                             </div>
                         </div>
                     </div>
+
+                    <div className="p-3 bg-dark-900/50 rounded-xl border border-dark-700 space-y-3">
+                        <h4 className="text-[10px] font-black text-accent uppercase tracking-widest">Sprite Assets</h4>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-gray-500 uppercase">Background Sprite URL</label>
+                            <input 
+                              value={formData.sprites?.background || ''} 
+                              onChange={e => setFormData({
+                                ...formData, 
+                                sprites: { ...(formData.sprites || {}), background: e.target.value }
+                              })} 
+                              className="input-field w-full py-2 text-xs" 
+                              placeholder="Ex: /assets/sprites/dungeons/crypt_bg.png" 
+                            />
+                        </div>
+                    </div>
+
                     <button className="btn-primary w-full py-3 mt-4" onClick={handleSave}>Finalize Blueprint</button>
                 </div>
             </Modal>
@@ -2193,7 +2427,7 @@ function Login() {
     e.preventDefault()
     try {
       const res = await axios.post('http://localhost:3000/api/auth/login', { email, password })
-      if (email === 'jeremypaul0101@gmail.com') {
+      if (res.data.isAdmin) {
          setToken(res.data.token)
       } else {
          setError('Admin access denied for this user')
@@ -2226,7 +2460,7 @@ function Login() {
               className="w-full input-field py-4 px-5 text-sm" 
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="admin@textra.online"
+              placeholder="admin@spritehero.online"
               required
             />
           </div>
@@ -2278,6 +2512,7 @@ function App() {
               <Route path="/zones" element={<Zones />} />
               <Route path="/market" element={<Marketplace />} />
               <Route path="/config" element={<Config />} />
+              <Route path="/reports" element={<Reports />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
@@ -2293,7 +2528,7 @@ function Zones() {
     const [editZone, setEditZone] = useState<Zone | null>(null)
     const [formData, setFormData] = useState<Partial<Zone>>({
         name: '', minDepth: 0, maxDepth: null, dangerMultiplier: 1, expMultiplier: 1, dropChanceMultiplier: 1,
-        commonNodeTypes: [], excludedNodeTypes: []
+        commonNodeTypes: [], excludedNodeTypes: [], sprites: { background: '' }
     })
 
     const fetchZones = async () => {
@@ -2354,7 +2589,7 @@ function Zones() {
                 <h1 className="text-3xl font-bold text-white tracking-tight">World Zones</h1>
                 <button onClick={() => {
                     setEditZone(null)
-                    setFormData({ name: '', minDepth: 0, maxDepth: null, dangerMultiplier: 1, expMultiplier: 1, dropChanceMultiplier: 1, commonNodeTypes: [], excludedNodeTypes: [] })
+                    setFormData({ name: '', minDepth: 0, maxDepth: null, dangerMultiplier: 1, expMultiplier: 1, dropChanceMultiplier: 1, commonNodeTypes: [], excludedNodeTypes: [], sprites: { background: '' } })
                     setIsModalOpen(true)
                 }} className="btn-primary flex items-center gap-2">
                     <Plus size={18} /> Add Zone
@@ -2367,7 +2602,7 @@ function Zones() {
                         <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => {
                                 setEditZone(zone)
-                                setFormData(zone)
+                                setFormData({ ...zone, sprites: zone.sprites || { background: '' } })
                                 setIsModalOpen(true)
                             }} className="p-2 bg-dark-900 rounded-lg text-accent hover:text-white border border-dark-600"><Edit2 size={14}/></button>
                             <button onClick={() => handleDelete(zone.id)} className="p-2 bg-dark-900 rounded-lg text-rose-500 hover:text-white border border-dark-600"><Trash2 size={14}/></button>
@@ -2466,6 +2701,22 @@ function Zones() {
                         </div>
                     </div>
 
+                    <div className="p-3 bg-dark-900/50 rounded-xl border border-dark-700 space-y-3">
+                        <h4 className="text-[10px] font-black text-accent uppercase tracking-widest">Sprite Assets</h4>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-gray-500 uppercase">Background Sprite URL</label>
+                            <input 
+                              value={formData.sprites?.background || ''} 
+                              onChange={e => setFormData({
+                                ...formData, 
+                                sprites: { ...(formData.sprites || {}), background: e.target.value }
+                              })} 
+                              className="input-field w-full py-2 text-xs" 
+                              placeholder="Ex: /assets/sprites/zones/forest_bg.png" 
+                            />
+                        </div>
+                    </div>
+
                     <button className="btn-primary w-full py-3" onClick={handleSave}>Save Zone</button>
                 </div>
             </Modal>
@@ -2473,5 +2724,165 @@ function Zones() {
     )
 }
 
+function Reports() {
+  const [reports, setReports] = useState<UserReport[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterCategory, setFilterCategory] = useState<string>('ALL')
+  const [filterStatus, setFilterStatus] = useState<string>('ALL')
+
+  const loadReports = async () => {
+    try {
+      const res = await adminApi.getReports()
+      setReports(res.data)
+      setLoading(false)
+    } catch {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadReports();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [])
+
+  const handleUpdateStatus = async (id: string, status: string) => {
+    try {
+      await adminApi.updateReportStatus(id, status)
+      await loadReports()
+    } catch {
+      alert("Failed to update status")
+    }
+  }
+
+  const filteredReports = reports.filter(r => {
+    const matchCat = filterCategory === 'ALL' || r.category === filterCategory
+    const matchStat = filterStatus === 'ALL' || r.status === filterStatus
+    return matchCat && matchStat
+  })
+
+  if (loading) return <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-accent"></div></div>
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white tracking-tight uppercase">Signals & Feedback</h1>
+          <p className="text-gray-400 text-sm mt-1">Review bug reports and player logs submitted from the mobile clients.</p>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-3">
+          <select 
+            value={filterCategory} 
+            onChange={e => setFilterCategory(e.target.value)}
+            className="bg-dark-800 border border-dark-700 text-white text-xs px-3 py-2 rounded-xl focus:border-accent outline-none"
+          >
+            <option value="ALL">All Categories</option>
+            <option value="BUG">Bugs</option>
+            <option value="PLAYER">Player Conduct</option>
+          </select>
+
+          <select 
+            value={filterStatus} 
+            onChange={e => setFilterStatus(e.target.value)}
+            className="bg-dark-800 border border-dark-700 text-white text-xs px-3 py-2 rounded-xl focus:border-accent outline-none"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="PENDING">Pending</option>
+            <option value="INVESTIGATING">Investigating</option>
+            <option value="RESOLVED">Resolved</option>
+          </select>
+        </div>
+      </div>
+
+      {filteredReports.length === 0 ? (
+        <div className="card text-center py-16 text-gray-500 text-sm">
+          No signals matching the selected filters.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filteredReports.map(report => (
+            <div key={report.id} className="card relative border-t-4 border-t-dark-600 flex flex-col justify-between" style={{
+              borderTopColor: report.category === "BUG" ? "#f59e0b" : "#f43f5e"
+            }}>
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                  <span className={`text-[10px] font-pixel-bold uppercase tracking-widest px-2.5 py-1 rounded border ${
+                    report.category === "BUG" 
+                      ? "bg-amber-500/10 border-amber-500/20 text-amber-500" 
+                      : "bg-rose-500/10 border-rose-500/20 text-rose-500"
+                  }`}>
+                    {report.category === "BUG" ? "🐞 Bug Report" : "👤 Player Conduct"}
+                  </span>
+                  
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                    report.status === "PENDING" ? "bg-red-900/40 text-red-400 border border-red-500/25" :
+                    report.status === "INVESTIGATING" ? "bg-blue-900/40 text-blue-400 border border-blue-500/25" :
+                    "bg-emerald-900/40 text-emerald-400 border border-emerald-500/25"
+                  }`}>
+                    {report.status}
+                  </span>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Reporter:</span>
+                    <span className="text-white font-bold">{report.reporterName}</span>
+                  </div>
+                  {report.category === "PLAYER" && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Reported:</span>
+                      <span className="text-rose-400 font-bold">{report.reportedName || "Unknown"}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Received:</span>
+                    <span className="text-gray-400">{new Date(report.createdAt).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="bg-dark-900/50 border border-dark-700 p-4 rounded-xl mb-4 min-h-[80px]">
+                  <p className="text-gray-300 text-xs font-sans whitespace-pre-wrap leading-relaxed">
+                    {report.description}
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Update Options */}
+              <div className="flex gap-2 pt-2 border-t border-dark-700">
+                {report.status !== "INVESTIGATING" && report.status !== "RESOLVED" && (
+                  <button 
+                    onClick={() => handleUpdateStatus(report.id, "INVESTIGATING")}
+                    className="flex-1 py-2 text-[10px] font-bold text-center text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl transition-all uppercase tracking-wider"
+                  >
+                    Investigate
+                  </button>
+                )}
+                {report.status !== "RESOLVED" && (
+                  <button 
+                    onClick={() => handleUpdateStatus(report.id, "RESOLVED")}
+                    className="flex-1 py-2 text-[10px] font-bold text-center text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all uppercase tracking-wider"
+                  >
+                    Resolve
+                  </button>
+                )}
+                {report.status === "RESOLVED" && (
+                  <button 
+                    onClick={() => handleUpdateStatus(report.id, "PENDING")}
+                    className="flex-1 py-2 text-[10px] font-bold text-center text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl transition-all uppercase tracking-wider"
+                  >
+                    Reopen
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default App

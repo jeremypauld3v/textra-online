@@ -12,6 +12,7 @@ import { marketService } from "../services/marketService.js";
 import { ENCOUNTER_INTERVAL, travelQueue, addTravelJob } from "../services/travelQueue.js";
 import { getIO } from "../socket.js";
 import { BACKEND_MESSAGES, GAME_BALANCE } from "../constants/gameBalance.js";
+import { getCharacterStatusPayload } from "../services/characterService.js";
 
 export async function gameRoutes(server: FastifyInstance) {
   // GET /api/game/metadata
@@ -41,6 +42,27 @@ export async function gameRoutes(server: FastifyInstance) {
     }
   });
 
+  // Ban check hook - runs after JWT verification for all game routes
+  server.addHook("onRequest", async (request, reply) => {
+    if (request.method === "OPTIONS" || request.url.includes("/metadata"))
+      return;
+
+    const { characterId } = request.user as { characterId: string };
+    if (!characterId) return;
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      select: { isBanned: true, banReason: true },
+    });
+
+    if (character?.isBanned) {
+      return reply.status(403).send({
+        error: "ACCOUNT_BANNED",
+        message: character.banReason || "Your account has been banned.",
+      });
+    }
+  });
+
   // GET /api/game/status
   server.get("/status", async (request, reply) => {
     const { characterId } = request.user as { characterId: string };
@@ -52,130 +74,13 @@ export async function gameRoutes(server: FastifyInstance) {
     }
 
     try {
-      const character = await prisma.character.findUnique({
-        where: { id: characterId },
-        include: {
-          battleLogs: {
-            orderBy: { createdAt: "desc" },
-            take: 5, // Return more logs for the list
-          },
-        },
-      });
-
-      if (!character) {
+      const payload = await getCharacterStatusPayload(characterId);
+      return reply.send(payload);
+    } catch (err: any) {
+      server.log.error(err);
+      if (err.message === "Character not found") {
         return reply.status(404).send({ error: BACKEND_MESSAGES.CHARACTER_NOT_FOUND });
       }
-
-      // Fetch Equipped Item Details
-      const gearResults = await Promise.all([
-        character.equippedWeaponId
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedWeaponId },
-              include: { template: true },
-            })
-          : null,
-        character.equippedChestId
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedChestId },
-              include: { template: true },
-            })
-          : null,
-        character.equippedHelmetId
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedHelmetId },
-              include: { template: true },
-            })
-          : null,
-        character.equippedBootsId
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedBootsId },
-              include: { template: true },
-            })
-          : null,
-        character.equippedGlovesId
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedGlovesId },
-              include: { template: true },
-            })
-          : null,
-        character.equippedCapeId
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedCapeId },
-              include: { template: true },
-            })
-          : null,
-        character.equippedNecklaceId
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedNecklaceId },
-              include: { template: true },
-            })
-          : null,
-        character.equippedRing1Id
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedRing1Id },
-              include: { template: true },
-            })
-          : null,
-        character.equippedRing2Id
-          ? prisma.inventoryItem.findUnique({
-              where: { id: character.equippedRing2Id },
-              include: { template: true },
-            })
-          : null,
-      ]);
-
-      const [weapon, chest, helmet, boots, gloves, cape, necklace, ring1, ring2] = gearResults;
-
-      // Prune character from nested logs to prevent any potential circularity
-      const latestBattles = character.battleLogs.map((log) => ({
-        ...log,
-        character: undefined, // Ensure no back-reference
-      }));
-
-      // Return a clean version of character without the nested array
-      const characterData = { ...character, battleLogs: undefined };
-
-      // Get Combat Stats (Base + Gear)
-      const combatStats =
-        await equipmentService.getCharacterCombatStats(characterId);
-
-      // Get Dungeon State if applicable
-      const dungeonState = await dungeonService.getDungeonState(characterId);
-
-      // Calculate Depth Tier & Rewards
-      const depth = character.currentDepth;
-      const tier = await getDepthTier(depth);
-
-      return reply.send({
-        character: {
-          ...characterData,
-          ...combatStats,
-          maxEnergy: combatStats.maxEnergy, // Override with calculated value
-          dungeonState,
-          locationName:
-            character.currentDepth === 0
-              ? "Valoria City"
-              : tier.name || `${character.currentDepth}km from City`,
-          isSafe: character.currentDepth < 200, // Keep 200km limit for now or check if tier name contains 'Safe'
-          rankName: tier.name,
-          dangerLevel: tier.dangerMult.toFixed(1) + "x",
-          expBonus: Math.round((tier.expMult - 1) * 100 + (Math.floor(depth / 50) * 5)),
-          lootBonus: Math.round((tier.lootMult - 1) * 100 + (Math.floor(depth / 50) * 2)),
-          gold: character.gold,
-          equippedWeapon: weapon,
-          equippedChest: chest,
-          equippedHelmet: helmet,
-          equippedBoots: boots,
-          equippedGloves: gloves,
-          equippedCape: cape,
-          equippedNecklace: necklace,
-          equippedRing1: ring1,
-          equippedRing2: ring2,
-        },
-        latestBattles,
-      });
-    } catch (err) {
-      server.log.error(err);
       return reply.status(500).send({ error: "Failed to fetch status" });
     }
   });
@@ -460,6 +365,17 @@ export async function gameRoutes(server: FastifyInstance) {
           io.to(`user:${p2UserId}`).emit("pvp_battle_start", p2Payload); // P2 receives
         } else {
           io.to(`user:${p1UserId}`).emit("pvp_battle_start", p1Payload); // P1 receives
+        }
+
+        // Broadcast real-time character status updates to both players
+        try {
+           const payload2 = await getCharacterStatusPayload(p2CharId);
+           io.to(`user:${p2UserId}`).emit("character_updated", payload2);
+
+           const payload1 = await getCharacterStatusPayload(p1CharId);
+           io.to(`user:${p1UserId}`).emit("character_updated", payload1);
+        } catch (e: any) {
+           server.log.error("Failed to emit character updates after PvP: " + e.message);
         }
 
         // Resume travel for the winner
@@ -1057,6 +973,66 @@ export async function gameRoutes(server: FastifyInstance) {
       return reply.send({ success: true });
     } catch (e: any) {
       return reply.status(500).send({ error: "Failed to clear chat" });
+    }
+  });
+
+  server.post("/reports", async (request, reply) => {
+    const { characterId } = request.user as { characterId: string };
+    const { category, reportedName, description } = request.body as {
+      category: "BUG" | "PLAYER";
+      reportedName?: string;
+      description: string;
+    };
+
+    if (!description || description.trim() === "") {
+      return reply.status(400).send({ error: "Description is required" });
+    }
+
+    if (!["BUG", "PLAYER"].includes(category)) {
+      return reply.status(400).send({ error: "Invalid report category" });
+    }
+
+    try {
+      const reporter = await prisma.character.findUnique({
+        where: { id: characterId },
+        select: { id: true, name: true }
+      });
+
+      if (!reporter) {
+        return reply.status(404).send({ error: "Reporter character not found" });
+      }
+
+      let reportedId: string | null = null;
+      let targetReportedName: string | null = null;
+
+      if (category === "PLAYER" && reportedName && reportedName.trim() !== "") {
+        const reportedChar = await prisma.character.findUnique({
+          where: { name: reportedName.trim() },
+          select: { id: true, name: true }
+        });
+        if (reportedChar) {
+          reportedId = reportedChar.id;
+          targetReportedName = reportedChar.name;
+        } else {
+          return reply.status(400).send({ error: `Player "${reportedName}" not found` });
+        }
+      }
+
+      const report = await prisma.userReport.create({
+        data: {
+          category,
+          reporterId: reporter.id,
+          reporterName: reporter.name,
+          reportedId,
+          reportedName: targetReportedName || reportedName || null,
+          description: description.trim()
+        }
+      });
+
+      return reply.send({ success: true, report });
+    } catch (e: any) {
+      server.log.error(e);
+      return reply.status(500).send({ error: "Failed to submit report" });
     }
   });
 }

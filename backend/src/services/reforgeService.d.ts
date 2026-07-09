@@ -18,6 +18,13 @@ export declare class ReforgeService {
         rolledAgi: number | null;
         rolledInt: number | null;
         rolledLuk: number | null;
+        rolledDex: number | null;
+        rolledLifesteal: number | null;
+        rolledThorns: number | null;
+        rolledGoldBonus: number | null;
+        rolledExpBonus: number | null;
+        rolledMoveSpeed: number | null;
+        rolledHpRegen: number | null;
     }>;
 }
 export declare const reforgeService: ReforgeService;

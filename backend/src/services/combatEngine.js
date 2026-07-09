@@ -85,7 +85,7 @@ export async function generatePVEEncounter(character) {
     const scaledHp = Math.floor(monster.hp * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, hpMult)) + (character.level * GAME_BALANCE.MONSTER_LEVEL_HP_BONUS);
     return {
         type: "PVE",
-        name: tier.prefix + monster.name,
+        name: monster.name,
         hp: scaledHp,
         maxHp: scaledHp,
         attack: Math.floor(monster.attack * Math.min(GAME_BALANCE.MAX_SCALING_MULTIPLIER, statMult)) + Math.floor(character.level * GAME_BALANCE.MONSTER_LEVEL_STAT_BONUS),
@@ -131,6 +131,22 @@ export async function generateGatheringEncounter(character) {
         resourceNodeTemplateId: node.id
     };
 }
+function getPlayerClass(stats) {
+    if (!stats)
+        return "WARRIOR";
+    // Use classType from equipment stats first, fallback to weapon code prefix
+    if (stats.classType === "WARRIOR" || stats.classType === "ARCHER" || stats.classType === "MAGE") {
+        return stats.classType;
+    }
+    const code = (stats.weaponCode || '').toUpperCase();
+    if (code.startsWith("WARRIOR") || code === "EXCALIBUR" || code === "CHAOS_BLADE")
+        return "WARRIOR";
+    if (code.startsWith("ARCHER") || code === "ARTEMIS_BOW")
+        return "ARCHER";
+    if (code.startsWith("MAGE") || code === "MERLIN_STAFF")
+        return "MAGE";
+    return "WARRIOR";
+}
 export async function executeCombat(character, enemy) {
     const startEnemyHp = enemy.hp;
     let enemyHp = enemy.hp;
@@ -142,58 +158,193 @@ export async function executeCombat(character, enemy) {
     const playerDefense = stats.def;
     let turnCounter = 1;
     const combatLog = [];
+    const playerClass = getPlayerClass(stats);
+    let enemyStunned = false;
+    let playerEvading = false;
+    let berserkActive = false;
+    let rejuvenateUsed = false;
     while (playerHp > 0 && enemyHp > 0) {
-        const pResult = calculateDamage(stats, enemyDefense);
-        const playerDamage = pResult.damage;
-        const isCrit = pResult.isCrit;
-        enemyHp -= playerDamage;
-        let msg = "";
-        if (isCrit) {
-            const critMsgs = [
-                `${character.name} lands a devastating blow on ${enemy.name}!`,
-                `CRITICAL! ${character.name} strikes a weak point!`,
-                `${character.name} unleashes a massive strike!`,
-            ];
-            msg = critMsgs[Math.floor(Math.random() * critMsgs.length)] + ` (-${playerDamage})`;
+        let turnActionTaken = false;
+        let turnDamage = 0;
+        let turnIsCrit = false;
+        let skillMessage = "";
+        // 1. Mage Heal Check (triggers once per battle at <40% HP)
+        if (playerClass === "MAGE" && !rejuvenateUsed && (playerHp / character.maxHp) < 0.40) {
+            rejuvenateUsed = true;
+            const healAmount = Math.floor(stats.int * 4.0);
+            playerHp = Math.min(character.maxHp, playerHp + healAmount);
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Player",
+                damage: 0,
+                message: `✨ REJUVENATE! You channel mana to restore +${healAmount} HP!`
+            });
         }
-        else {
-            const hitMsgs = [
-                `${character.name} attacks ${enemy.name}.`,
-                `${character.name} swings at ${enemy.name}.`,
-                `${character.name} hits ${enemy.name}.`,
-            ];
-            msg = hitMsgs[Math.floor(Math.random() * hitMsgs.length)] + ` (-${playerDamage})`;
+        // 2. Warrior Berserk Check (triggers once at <30% HP, lasts rest of battle)
+        if (playerClass === "WARRIOR" && !berserkActive && (playerHp / character.maxHp) < 0.30) {
+            berserkActive = true;
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Player",
+                damage: 0,
+                message: "🩸 BERSERK! You enter a bloodlust rage, increasing ATK by 50% for the rest of battle!"
+            });
         }
-        combatLog.push({
-            turn: turnCounter,
-            attacker: "Player",
-            damage: playerDamage,
-            message: msg,
-            isCrit: isCrit
-        });
+        // 3. Player Active Skills
+        if (playerClass === "MAGE" && Math.random() < 0.25) {
+            // mage fireball
+            const isCrit = Math.random() < Math.min(0.8, stats.luk * GAME_BALANCE.BASE_CRIT_MODIFIER);
+            const baseDmg = stats.int * 3.5;
+            const damage = Math.floor(isCrit ? baseDmg * 2 : baseDmg);
+            enemyHp -= damage;
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Player",
+                damage,
+                message: `🔥 FIREBALL! You blast ${enemy.name} with raw arcane magic! (-${damage})`,
+                isCrit
+            });
+            turnActionTaken = true;
+        }
+        else if (playerClass === "WARRIOR" && Math.random() < 0.20) {
+            // warrior shield slam
+            const isCrit = Math.random() < Math.min(0.8, stats.luk * GAME_BALANCE.BASE_CRIT_MODIFIER);
+            const baseDmg = stats.def * 1.5;
+            const damage = Math.floor(isCrit ? baseDmg * 2 : baseDmg);
+            enemyHp -= damage;
+            enemyStunned = true;
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Player",
+                damage,
+                message: `🛡️ SHIELD SLAM! You hit ${enemy.name} with your shield, stunning them! (-${damage})`,
+                isCrit
+            });
+            turnActionTaken = true;
+        }
+        else if (playerClass === "ARCHER" && Math.random() < Math.min(0.40, stats.agi / 1000)) {
+            // archer double shot
+            const shot1 = calculateDamage(stats, enemyDefense);
+            const shot2 = calculateDamage(stats, enemyDefense);
+            const totalDmg = shot1.damage + shot2.damage;
+            enemyHp -= totalDmg;
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Player",
+                damage: totalDmg,
+                message: `🏹 DOUBLE SHOT! You fire two arrows in rapid succession! (-${totalDmg})`,
+                isCrit: shot1.isCrit || shot2.isCrit
+            });
+            turnActionTaken = true;
+        }
+        else if (playerClass === "ARCHER" && !playerEvading && Math.random() < Math.min(0.40, stats.agi / 800)) {
+            // archer defensive roll / evasion preparation
+            playerEvading = true;
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Player",
+                damage: 0,
+                message: "💨 DEFENSIVE ROLL! You prepare to evade the enemy's next strike!"
+            });
+        }
+        // 4. Fallback to Normal Attack if no offensive skill action was taken
+        if (!turnActionTaken) {
+            let finalStats = stats;
+            if (berserkActive) {
+                finalStats = { ...stats, atk: stats.atk * 1.5 };
+            }
+            const pResult = calculateDamage(finalStats, enemyDefense);
+            const playerDamage = pResult.damage;
+            const isCrit = pResult.isCrit;
+            enemyHp -= playerDamage;
+            // 🩸 Life Steal
+            if (stats.lifesteal > 0 && playerDamage > 0) {
+                const heal = Math.floor(playerDamage * (stats.lifesteal / 100));
+                if (heal > 0)
+                    playerHp = Math.min(character.maxHp, playerHp + heal);
+            }
+            let msg = "";
+            if (isCrit) {
+                const critMsgs = [
+                    `${character.name} lands a devastating blow on ${enemy.name}!`,
+                    `CRITICAL! ${character.name} strikes a weak point!`,
+                    `${character.name} unleashes a massive strike!`,
+                ];
+                msg = critMsgs[Math.floor(Math.random() * critMsgs.length)] + ` (-${playerDamage})`;
+            }
+            else {
+                const hitMsgs = [
+                    `${character.name} attacks ${enemy.name}.`,
+                    `${character.name} swings at ${enemy.name}.`,
+                    `${character.name} hits ${enemy.name}.`,
+                ];
+                msg = hitMsgs[Math.floor(Math.random() * hitMsgs.length)] + ` (-${playerDamage})`;
+            }
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Player",
+                damage: playerDamage,
+                message: msg,
+                isCrit: isCrit
+            });
+        }
         if (enemyHp <= 0)
             break;
-        const eResult = calculateDamage({ atk: enemyAttack, dex: 50, luk: 5 }, playerDefense);
-        const enemyDamage = eResult.damage;
-        const dodgeChance = Math.min(0.8, (stats.agi * GAME_BALANCE.BASE_DODGE_MODIFIER));
-        const isDodged = Math.random() < dodgeChance;
-        if (isDodged) {
-            combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: 0, message: `${character.name} deftly dodged ${enemy.name}'s attack!` });
-        }
-        else {
-            playerHp -= enemyDamage;
-            const enemyMsgs = [
-                `${enemy.name} strikes back!`,
-                `${enemy.name} lunges at ${character.name}.`,
-                `${enemy.name} deals a hit.`,
-            ];
+        // 5. Enemy turn
+        if (enemyStunned) {
+            enemyStunned = false; // consume stun
             combatLog.push({
                 turn: turnCounter,
                 attacker: "Enemy",
-                damage: enemyDamage,
-                message: enemyMsgs[Math.floor(Math.random() * enemyMsgs.length)] + ` (-${enemyDamage})`,
-                isCrit: eResult.isCrit
+                damage: 0,
+                message: `💫 ${enemy.name} is stunned and unable to move!`
             });
+        }
+        else if (playerEvading) {
+            playerEvading = false; // evade success!
+            combatLog.push({
+                turn: turnCounter,
+                attacker: "Enemy",
+                damage: 0,
+                message: `💨 MISS! You deftly dodge ${enemy.name}'s attack!`
+            });
+        }
+        else {
+            const eResult = calculateDamage({ atk: enemyAttack, dex: 50, luk: 5 }, playerDefense);
+            const enemyDamage = eResult.damage;
+            const dodgeChance = Math.min(0.8, (stats.agi * GAME_BALANCE.BASE_DODGE_MODIFIER));
+            const isDodged = Math.random() < dodgeChance;
+            if (isDodged) {
+                combatLog.push({ turn: turnCounter, attacker: "Enemy", damage: 0, message: `${character.name} deftly dodged ${enemy.name}'s attack!` });
+            }
+            else {
+                playerHp -= enemyDamage;
+                // 🛡️ Thorns — reflect damage back
+                if (stats.thorns > 0 && enemyDamage > 0) {
+                    const reflect = Math.floor(enemyDamage * (stats.thorns / 100));
+                    if (reflect > 0) {
+                        enemyHp -= reflect;
+                        combatLog.push({
+                            turn: turnCounter,
+                            attacker: "Player",
+                            damage: reflect,
+                            message: `🌵 THORNS! ${enemy.name} takes ${reflect} reflected damage!`
+                        });
+                    }
+                }
+                const enemyMsgs = [
+                    `${enemy.name} strikes back!`,
+                    `${enemy.name} lunges at ${character.name}.`,
+                    `${enemy.name} deals a hit.`,
+                ];
+                combatLog.push({
+                    turn: turnCounter,
+                    attacker: "Enemy",
+                    damage: enemyDamage,
+                    message: enemyMsgs[Math.floor(Math.random() * enemyMsgs.length)] + ` (-${enemyDamage})`,
+                    isCrit: eResult.isCrit
+                });
+            }
         }
         turnCounter++;
         if (turnCounter > 100)
@@ -207,8 +358,16 @@ export async function executeCombat(character, enemy) {
         const minMult = monsterTemplate.minGoldMult || 0.8;
         const maxMult = monsterTemplate.maxGoldMult || 1.2;
         const randomMult = Math.random() * (maxMult - minMult) + minMult;
-        finalGold = Math.floor(monsterTemplate.goldReward * randomMult);
+        // Depth-based gold scaling: +5% per 50km depth
+        const depthBonus = 1 + Math.floor(character.currentDepth / 50) * 0.05;
+        finalGold = Math.floor(monsterTemplate.goldReward * randomMult * depthBonus);
+        // 💰 Gold bonus from gear
+        if (stats.goldBonus > 0)
+            finalGold = Math.floor(finalGold * (1 + stats.goldBonus / 100));
     }
+    // 📈 EXP bonus from gear
+    if (stats.equipExpBonus > 0)
+        finalExp = Math.floor(finalExp * (1 + stats.equipExpBonus / 100));
     const { level, exp, levelGain } = calculateLevelUp(character.level, character.exp, finalExp);
     const nextMaxHp = character.maxHp + (levelGain * 10);
     let nextHp = Math.max(1, playerHp);
@@ -345,7 +504,8 @@ export async function executeGathering(character, node) {
         log: savedLog,
         experienceGained: node.xpReward || 0,
         goldGained: 0,
-        startIntegrity: integrity,
+        startEnemyHp: node.hp,
+        startMaxEnemyHp: node.hp,
         startMaxPlayerHp: character.maxHp,
         startPlayerHp: character.hp,
         lootedItems: lootedItems

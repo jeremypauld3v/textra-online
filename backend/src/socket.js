@@ -2,12 +2,14 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { prisma } from "./lib/prisma.js";
 import { inventoryService } from "./services/inventoryService.js";
+import { getCharacterStatusPayload } from "./services/characterService.js";
 let io;
 const onlineUsers = new Map(); // userId -> connection count
 const charCache = new Map(); // userId -> char info
 const activeTrades = new Map(); // userId -> partnerId
 const tradeStates = new Map(); // userId -> my offer half
 const pendingTradeRequests = new Map();
+const pauseTimers = new Map(); // userId -> auto-pause timeout 
 let presenceTimeout = null;
 const broadcastPresence = () => {
     if (presenceTimeout)
@@ -24,21 +26,37 @@ export function initSocket(fastify) {
             methods: ["GET", "POST"],
         },
     });
-    // Authentication Middleware
-    io.use((socket, next) => {
+    // Authentication + Ban Middleware
+    io.use(async (socket, next) => {
         const token = socket.handshake.auth.token;
         if (!token) {
             return next(new Error("Authentication error: No token provided"));
         }
+        let userId;
         try {
             const secret = process.env.JWT_SECRET || "supersecretjwtkey_change_in_production";
             const decoded = jwt.verify(token, secret);
-            socket.data.userId = decoded.userId;
-            next();
+            userId = decoded.userId;
+            socket.data.userId = userId;
         }
         catch (err) {
-            next(new Error("Authentication error: Invalid token"));
+            return next(new Error("Authentication error: Invalid token"));
         }
+        // Check if the user's character is banned (separate from JWT try/catch)
+        try {
+            const character = await prisma.character.findFirst({
+                where: { userId },
+                select: { isBanned: true, banReason: true },
+            });
+            if (character?.isBanned) {
+                return next(new Error(character.banReason || "Your account has been banned."));
+            }
+        }
+        catch (err) {
+            console.error("Ban check failed:", err);
+            return next(new Error("Server error during authentication. Please try again."));
+        }
+        next();
     });
     io.on("connection", async (socket) => {
         const userId = socket.data.userId;
@@ -55,6 +73,22 @@ export function initSocket(fastify) {
         broadcastPresence();
         // Join a private room for direct messages/trades
         socket.join(`user:${userId}`);
+        // ▶️ Auto-resume on reconnect — cancel pending pause timer and un-pause
+        const existingTimer = pauseTimers.get(userId);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+            pauseTimers.delete(userId);
+        }
+        try {
+            const char = await prisma.character.findFirst({ where: { userId }, select: { id: true, name: true, isPaused: true } });
+            if (char?.isPaused) {
+                await prisma.character.update({ where: { id: char.id }, data: { isPaused: false } });
+                console.log(`▶️ Auto-resumed ${char.name} on reconnect.`);
+            }
+        }
+        catch (e) {
+            console.error("Auto-resume failed:", e);
+        }
         // Unified Chat Handler
         socket.on("chat_message", async (data) => {
             const char = charCache.get(userId);
@@ -301,6 +335,22 @@ export function initSocket(fastify) {
                 });
                 io.to(`user:${userId}`).emit("trade_complete", { success: true });
                 io.to(`user:${data.targetUserId}`).emit("trade_complete", { success: true });
+                // Broadcast real-time character status updates to both players
+                try {
+                    const char1 = charCache.get(userId);
+                    const char2 = charCache.get(data.targetUserId);
+                    if (char1) {
+                        const payload1 = await getCharacterStatusPayload(char1.id);
+                        io.to(`user:${userId}`).emit("character_updated", payload1);
+                    }
+                    if (char2) {
+                        const payload2 = await getCharacterStatusPayload(char2.id);
+                        io.to(`user:${data.targetUserId}`).emit("character_updated", payload2);
+                    }
+                }
+                catch (e) {
+                    console.error("Failed to emit character updates after trade:", e.message);
+                }
                 // CLEAR ACTIVE TRADE
                 activeTrades.delete(userId);
                 activeTrades.delete(data.targetUserId);
@@ -320,19 +370,24 @@ export function initSocket(fastify) {
         });
         socket.on("disconnect", async () => {
             console.log(`👤 User disconnected: ${userId}`);
-            // 🛑 OFFLINE AUTO-PAUSE
-            try {
-                const char = await prisma.character.findFirst({ where: { userId } });
-                if (char && (char.actionStatus === "TRAVELING_OUT" || char.actionStatus === "TRAVELING_IN" || char.actionStatus === "CAMPING")) {
-                    await prisma.character.update({
-                        where: { id: char.id },
-                        data: { isPaused: true }
-                    });
-                    console.log(`⏸️ Auto-Paused character ${char.name} for offline safety.`);
-                }
-            }
-            catch (e) {
-                console.error("Auto-pause failed:", e);
+            // 🛑 AUTO-PAUSE AFTER 2 MINUTES OFFLINE
+            // Only start timer if they're the last connection for this userId
+            const remaining = onlineUsers.get(userId);
+            if (!remaining || remaining <= 1) {
+                const timer = setTimeout(async () => {
+                    pauseTimers.delete(userId);
+                    try {
+                        const char = await prisma.character.findFirst({ where: { userId }, select: { id: true, name: true, actionStatus: true, isPaused: true } });
+                        if (char && !char.isPaused && (char.actionStatus === "TRAVELING_OUT" || char.actionStatus === "TRAVELING_IN" || char.actionStatus === "CAMPING")) {
+                            await prisma.character.update({ where: { id: char.id }, data: { isPaused: true } });
+                            console.log(`⏸️ Auto-paused ${char.name} after 2min offline.`);
+                        }
+                    }
+                    catch (e) {
+                        console.error("Delayed auto-pause failed:", e);
+                    }
+                }, 2 * 60 * 1000); // 2 minutes
+                pauseTimers.set(userId, timer);
             }
             // Clean up any pending outgoing trade request
             const pending = pendingTradeRequests.get(userId);

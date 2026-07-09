@@ -36,31 +36,31 @@ export default function FilterButton(props: FilterButtonProps) {
   ].filter(Boolean).length;
 
   return (
-    <View className="mb-6">
+    <View className="mb-4">
       <View className="flex-row items-center">
         <TouchableOpacity
           onPress={() => setIsModalVisible(true)}
-          className={`flex-row items-center px-5 py-2.5 rounded-2xl border ${
-            isActive ? "bg-indigo-600/10 border-indigo-500/50" : "bg-slate-900 border-slate-800"
+          className={`flex-row items-center px-4 py-2 rounded-xl border ${
+            isActive ? "bg-white/10 border-white/30" : "bg-white/[0.04] border-white/10"
           }`}
         >
-          <Ionicons name="options-outline" size={18} color={isActive ? "#818cf8" : "#94a3b8"} />
-          <Text className={`uppercase text-[10px] tracking-widest ml-3 ${
-            isActive ? "text-white" : "text-slate-500"
+          <Ionicons name="options-outline" size={16} color={isActive ? "#ffffff" : "rgba(255, 255, 255, 0.4)"} />
+          <Text className={`uppercase text-[8px] font-pixel-bold tracking-widest ml-2.5 ${
+            isActive ? "text-white" : "text-white/30"
           }`}>
             Filters {activeCount > 0 ? `(${activeCount})` : ""}
           </Text>
           {isActive && (
-            <View className="ml-2 w-1.5 h-1.5 rounded-full bg-indigo-400" />
+            <View className="ml-1.5 w-1.5 h-1.5 rounded-full bg-white" />
           )}
         </TouchableOpacity>
 
         {isActive && (
           <TouchableOpacity 
             onPress={clearFilters}
-            className="ml-4"
+            className="ml-3"
           >
-            <Text className="text-slate-600 text-[10px] uppercase tracking-widest">Clear</Text>
+            <Text className="text-white/40 text-[8px] font-pixel-bold uppercase tracking-widest">Clear</Text>
           </TouchableOpacity>
         )}
       </View>

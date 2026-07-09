@@ -61,6 +61,19 @@ export interface CharacterStatus {
   equippedNecklace?: { id: string; template: any } | null;
   equippedRing1?: { id: string; template: any } | null;
   equippedRing2?: { id: string; template: any } | null;
+  weaponCode?: string | null;
+  classType?: string | null;
+  critChance?: number;
+  dodgeChance?: number;
+  armorPen?: number;
+  gatherPower?: number;
+  pvpFlee?: number;
+  lifesteal?: number;
+  thorns?: number;
+  goldBonus?: number;
+  equipExpBonus?: number;
+  moveSpeed?: number;
+  hpRegen?: number;
   dungeonState?: any;
 }
 
@@ -259,6 +272,11 @@ export const gameApi = {
 
   getPrivateChatHistory: async (targetUserId: string) => {
     const response = await apiClient.get<{ messages: any[] }>(`/game/chat/private/${targetUserId}`);
+    return response.data;
+  },
+
+  submitReport: async (category: "BUG" | "PLAYER", reportedName?: string, description?: string) => {
+    const response = await apiClient.post<{ success: boolean; report: any }>("/game/reports", { category, reportedName, description });
     return response.data;
   }
 };

@@ -12,6 +12,7 @@ const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379", 
 });
 
 import { getIO } from "../socket.js";
+import { getCharacterStatusPayload } from "./characterService.js";
 
 /**
  * ⚔️ REAL-TIME PVP MATCHMAKING
@@ -132,6 +133,19 @@ export const travelWorker = new Worker(
       }
     }
 
+    // ❤️ Passive HP Regen + ⚡ Move Speed from gear
+    let gearStats: any = null;
+    try {
+      const { equipmentService } = await import("./equipmentService.js");
+      gearStats = await equipmentService.getCharacterCombatStats(characterId);
+      if (gearStats?.hpRegen > 0 && character.hp < character.maxHp) {
+        const regen = Math.max(1, Math.floor((character.maxHp * gearStats.hpRegen) / 100));
+        const newHp = Math.min(character.maxHp, character.hp + regen);
+        await prisma.character.update({ where: { id: characterId }, data: { hp: newHp } });
+        character.hp = newHp;
+      }
+    } catch {}
+
     // 📍 ALWAYS UPDATE REAL-TIME LOCATION (For PvP Matchmaking & Social)
     // We keep players in Redis even if they are in an ENCOUNTER,
     // rollPvPEncounter will handle the status check.
@@ -237,17 +251,27 @@ export const travelWorker = new Worker(
     const isCamping = nextStatus === "CAMPING";
 
     if (isMoving || isCamping) {
+       // ⚡ Move speed reduces pulse interval (capped at 50% reduction)
+       const speedMult = gearStats?.moveSpeed ? Math.max(0.5, 1 - gearStats.moveSpeed / 100) : 1;
        await travelQueue.add(
          "pulse", 
          { characterId }, 
          { 
-           delay: ENCOUNTER_INTERVAL * 1000,
+           delay: ENCOUNTER_INTERVAL * 1000 * speedMult,
            removeOnComplete: true,
            removeOnFail: true
          }
        );
     } else if (nextStatus === "IDLE") {
        await connection.zrem("players_depth", characterId);
+    }
+
+    // Broadcast real-time update to the client socket
+    try {
+      const payload = await getCharacterStatusPayload(characterId);
+      getIO().to(`user:${character.userId}`).emit("character_updated", payload);
+    } catch (err: any) {
+      console.error(`Failed to emit character_updated socket event: ${err.message}`);
     }
 
     return { success: true, encounterFound: false };

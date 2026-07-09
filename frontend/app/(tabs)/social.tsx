@@ -6,7 +6,7 @@ import { useSocket } from "../../context/SocketContext";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useSocialStore } from "../../store/useSocialStore";
 import { gameApi } from "../../api/game";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import BaseModal from "../../components/ui/BaseModal";
 import StandardButton from "../../components/ui/StandardButton";
 import ScreenHeader from "../../components/ui/ScreenHeader";
@@ -17,15 +17,15 @@ type ChatTab = "global" | "trade" | "whispers";
 
 // 🧩 MEMOIZED MESSAGE COMPONENT
 const ChatMessage = memo(({ l, isMe, onPress }: { l: any, isMe: boolean, onPress: () => void }) => (
-  <Animated.View entering={FadeIn.duration(200)} className="mb-4">
+  <Animated.View entering={FadeIn.duration(200)} className="mb-3">
     <Pressable onPress={onPress}>
-       <View className="flex-row items-center mb-1">
-          <Text className={`text-[10px] font-pixel-bold uppercase mr-2 ${isMe ? "text-amber-400" : "text-indigo-400"}`}>
+       <View className="flex-row items-center mb-0.5">
+          <Text className={`text-[9px] font-pixel-bold uppercase mr-1.5 ${isMe ? "text-amber-400" : "text-indigo-400"}`}>
              {l.senderName}
           </Text>
-          <Text className="text-slate-700 text-[8px] font-pixel-bold">{new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+          <Text className="text-white/20 text-[7px] font-pixel-bold">{new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
        </View>
-       <Text className="text-slate-300 text-xs font-sans leading-relaxed">{l.message}</Text>
+       <Text className="text-white/80 text-xs font-sans leading-relaxed">{l.message}</Text>
     </Pressable>
   </Animated.View>
 ));
@@ -69,7 +69,6 @@ export default function SocialScreen() {
              const data = await gameApi.getTradeChatHistory();
              messages = data.messages;
           }
-          // Reverse history for inverted list (newest first)
           setChatLogs([...messages].reverse());
        } catch (e) {
           console.error("Failed to fetch chat history", e);
@@ -90,7 +89,6 @@ export default function SocialScreen() {
   useEffect(() => {
     if (socket) {
       const handleMessage = (msg: any) => {
-        // Prepend new messages for inverted list
         setChatLogs(prev => [msg, ...prev]);
         
         if (msg.channel === "whispers") {
@@ -118,7 +116,6 @@ export default function SocialScreen() {
          const fetchPrivateHistory = async () => {
             try {
                const data = await gameApi.getPrivateChatHistory(whisperTarget.id);
-               // Filter out old whispers and add new history (reversed)
                const reversedHistory = [...data.messages].reverse();
                setChatLogs(prev => {
                   const otherLogs = prev.filter(l => l.channel !== "whispers");
@@ -142,7 +139,7 @@ export default function SocialScreen() {
        const data = await gameApi.getFriends();
        setFriends(data.friends);
        setPending(data.pending);
-    } catch (e) {
+     } catch (e) {
        console.error("Failed to load friends", e);
     } finally {
        setLoadingFriends(false);
@@ -229,38 +226,38 @@ export default function SocialScreen() {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         renderItem={({ item, index }) => (
-          <Animated.View entering={FadeIn.delay(index * 50).duration(300)}>
+          <Animated.View entering={FadeInDown.delay(index * 25).duration(200)}>
             <Pressable 
               onPress={() => setWhisperTarget({ id: item.id, name: item.name })}
-              className={`flex-row items-center bg-slate-900/40 p-5 rounded-[24px] border mb-3 ${item.hasUnread ? "border-amber-500/50 bg-amber-500/5" : "border-white/5"}`}
+              className={`flex-row items-center bg-white/[0.03] p-4 rounded-xl border mb-2 ${item.hasUnread ? "border-white bg-white/10" : "border-white/5"}`}
             >
-               <View className="w-10 h-10 bg-indigo-500/20 rounded-full items-center justify-center mr-4">
-                  <Ionicons name="person" size={20} color={item.hasUnread ? "#fbbf24" : "#818cf8"} />
+               <View className="w-8 h-8 bg-white/10 rounded-full items-center justify-center mr-3">
+                  <Ionicons name="person" size={16} color={item.hasUnread ? "#ffffff" : "rgba(255, 255, 255, 0.4)"} />
                   {item.hasUnread && (
-                    <View className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-[#020617]" />
+                    <View className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-white rounded-full border-2 border-black" />
                   )}
                </View>
                <View className="flex-1">
                   <View className="flex-row items-center justify-between">
-                     <Text className={`text-sm font-pixel-bold ${item.hasUnread ? "text-amber-400" : "text-white"}`}>{item.name}</Text>
+                     <Text className={`text-xs font-pixel-bold ${item.hasUnread ? "text-white font-black" : "text-white/80"}`}>{item.name}</Text>
                      {item.lastMessageAt && (
-                        <Text className="text-slate-600 text-[8px] font-pixel-bold">
+                        <Text className="text-white/30 text-[7px] font-pixel-bold">
                            {new Date(item.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Text>
                      )}
                   </View>
-                  <Text className="text-slate-500 text-[10px] font-sans mt-1" numberOfLines={1}>
+                  <Text className="text-white/40 text-[9px] font-sans mt-0.5" numberOfLines={1}>
                      {item.lastMessage || `Level ${item.level}`}
                   </Text>
                </View>
-               <Ionicons name="chevron-forward" size={16} color="#475569" className="ml-2" />
+               <Ionicons name="chevron-forward" size={14} color="rgba(255, 255, 255, 0.2)" className="ml-2" />
             </Pressable>
           </Animated.View>
         )}
         ListEmptyComponent={() => (
           <View className="items-center justify-center py-20 opacity-20">
-            <Ionicons name="chatbubbles-outline" size={48} color="#475569" />
-            <Text className="text-slate-500 text-[10px] font-pixel-bold uppercase mt-4">No active conversations</Text>
+            <Ionicons name="chatbubbles-outline" size={48} color="#ffffff" />
+            <Text className="text-white/40 text-[9px] font-pixel-bold uppercase mt-4">No active conversations</Text>
           </View>
         )}
       />
@@ -288,7 +285,7 @@ export default function SocialScreen() {
   };
 
   return (
-    <View className="flex-1 bg-[#020617]">
+    <View className="flex-1 bg-void">
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"} 
         style={{ flex: 1 }}
@@ -296,15 +293,15 @@ export default function SocialScreen() {
       >
         <View 
           className="flex-1 px-8"
-          style={{ paddingTop: Math.max(insets.top, 16) }}
+          style={{ paddingTop: Math.max(insets.top, 12) }}
         >
           <ScreenHeader 
             title="COMMUNAL" 
             subtitle={connected ? "Nexus Active" : "Nexus Severed"} 
             rightElement={
-              <Pressable onPress={() => setIsFriendListVisible(true)} className="w-12 h-12 bg-slate-900 rounded-2xl items-center justify-center border border-white/10">
-                <Ionicons name="people" size={20} color="#fbbf24" />
-                {pending.length > 0 && <View className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 rounded-full items-center justify-center border-2 border-[#020617]"><Text className="text-[8px] text-white font-pixel-bold">{pending.length}</Text></View>}
+              <Pressable onPress={() => setIsFriendListVisible(true)} className="w-12 h-12 bg-white/5 rounded-xl items-center justify-center border border-white/10 active:bg-white/10">
+                <Ionicons name="people" size={18} color="#ffffff" />
+                {pending.length > 0 && <View className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full items-center justify-center border-2 border-black"><Text className="text-[8px] text-black font-pixel-bold">{pending.length}</Text></View>}
               </Pressable>
             }
           />
@@ -314,10 +311,10 @@ export default function SocialScreen() {
             activeTab={activeTab} 
             onTabChange={setActiveTab} 
             badgeCounts={{ whispers: showWhisperTabRedDot }}
-            className="mb-8"
+            className="mb-4"
           />
 
-          <View className="flex-1 border-t border-white/5 pt-6">
+          <View className="flex-1 border-t border-white/[0.04] pt-4">
             {activeTab === "whispers" && !whisperTarget ? (
                renderWhisperPartners()
             ) : (
@@ -325,19 +322,19 @@ export default function SocialScreen() {
             )}
           </View>
 
-          <View className="py-6">
+          <View className="py-4">
              {activeTab === "whispers" && whisperTarget && (
-               <View className="flex-row items-center mb-2 px-2">
-                  <Text className="text-amber-500 text-[8px] font-pixel-bold uppercase">To: {whisperTarget.name}</Text>
-                  <Pressable onPress={() => setWhisperTarget(null)} className="ml-2">
-                     <Ionicons name="close-circle" size={12} color="#475569" />
+               <View className="flex-row items-center mb-1.5 px-1">
+                  <Text className="text-white/60 text-[8px] font-pixel-bold uppercase">To: {whisperTarget.name}</Text>
+                  <Pressable onPress={() => setWhisperTarget(null)} className="ml-1.5">
+                     <Ionicons name="close-circle" size={12} color="rgba(255, 255, 255, 0.4)" />
                   </Pressable>
                </View>
              )}
              <TextInput
-               className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-5 text-white text-sm font-sans"
+               className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-5 py-4 text-white text-xs font-sans"
                placeholder={activeTab === "whispers" ? (whisperTarget ? "Type whisper..." : "Select someone...") : "Transmit message..."} 
-               placeholderTextColor="#334155" 
+               placeholderTextColor="rgba(255, 255, 255, 0.2)" 
                value={input} 
                onChangeText={setInput} 
                onSubmitEditing={submitChat}
@@ -355,52 +352,52 @@ export default function SocialScreen() {
         title="SOCIAL NEXUS"
         position="bottom"
       >
-         <View className="h-[500px] px-2">
-            <View className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-4 py-2 mb-6">
+         <View className="h-[400px] px-1">
+            <View className="flex-row items-center bg-white/[0.04] border border-white/10 rounded-xl px-4 py-2 mb-4">
                <TextInput 
                   className="flex-1 text-white text-xs font-sans"
                   placeholder="PLAYER NAME..."
-                  placeholderTextColor="#334155"
+                  placeholderTextColor="rgba(255, 255, 255, 0.2)"
                   value={friendNameInput}
                   onChangeText={setFriendNameInput}
                />
-               <Pressable onPress={handleAddFriend} className="bg-amber-600 px-4 py-2 rounded-xl">
-                  <Text className="text-white text-[10px] font-pixel-bold">LINK</Text>
+               <Pressable onPress={handleAddFriend} className="bg-white px-4 py-2 rounded-lg active:opacity-90">
+                  <Text className="text-black text-[9px] font-pixel-bold">LINK</Text>
                </Pressable>
             </View>
 
             {loadingFriends ? (
-               <ActivityIndicator color="#fbbf24" />
+               <ActivityIndicator color="#ffffff" />
             ) : (
                <FlatList 
                   data={[...pending.map(p => ({ ...p, type: 'pending' })), ...friends.map(f => ({ ...f, type: 'friend' }))]}
                   keyExtractor={(item) => item.id}
                   showsVerticalScrollIndicator={false}
                   renderItem={({ item }) => (
-                     <View className="flex-row items-center justify-between bg-slate-900/50 border border-white/5 p-4 rounded-2xl mb-3">
+                     <View className="flex-row items-center justify-between bg-white/[0.02] border border-white/[0.05] p-3 rounded-xl mb-2">
                         <View className="flex-row items-center">
-                           <View className={`w-2 h-2 rounded-full mr-3 ${item.actionStatus === "IDLE" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                           <View className={`w-2 h-2 rounded-full mr-2.5 ${item.actionStatus === "IDLE" ? "bg-white" : "bg-white/30"}`} />
                            <View>
-                              <Text className="text-white text-sm font-pixel-bold">{item.name}</Text>
-                              <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase">Level {item.level} • {item.actionStatus}</Text>
+                              <Text className="text-white text-xs font-pixel-bold">{item.name}</Text>
+                              <Text className="text-white/30 text-[8px] font-pixel-bold uppercase">Level {item.level} • {item.actionStatus}</Text>
                            </View>
                         </View>
                         
                         {item.type === 'pending' ? (
-                           <Pressable onPress={() => handleAcceptFriend(item.id)} className="bg-emerald-600 px-3 py-1.5 rounded-lg">
+                           <Pressable onPress={() => handleAcceptFriend(item.id)} className="bg-white/10 border border-white/20 px-3 py-1.5 rounded-lg active:bg-white/20">
                               <Text className="text-white text-[8px] font-pixel-bold uppercase">Accept</Text>
                            </Pressable>
                         ) : (
-                           <Pressable onPress={() => { setIsFriendListVisible(false); openPlayerOptions(item); }} className="w-8 h-8 bg-slate-800 rounded-full items-center justify-center">
-                              <Ionicons name="ellipsis-vertical" size={16} color="#475569" />
+                           <Pressable onPress={() => { setIsFriendListVisible(false); openPlayerOptions(item); }} className="w-8 h-8 bg-white/5 rounded-full items-center justify-center active:bg-white/10">
+                              <Ionicons name="ellipsis-vertical" size={14} color="rgba(255, 255, 255, 0.4)" />
                            </Pressable>
                         )}
                      </View>
                   )}
                   ListEmptyComponent={() => (
                      <View className="items-center justify-center py-20 opacity-20">
-                        <Ionicons name="people-outline" size={48} color="#475569" />
-                        <Text className="text-slate-500 text-[10px] font-pixel-bold uppercase mt-4">No active links found</Text>
+                        <Ionicons name="people-outline" size={48} color="#ffffff" />
+                        <Text className="text-white/40 text-[9px] font-pixel-bold uppercase mt-4">No active links found</Text>
                      </View>
                   )}
                />
@@ -415,7 +412,7 @@ export default function SocialScreen() {
          title={selectedPlayer?.name || "PLAYER"}
          position="bottom"
       >
-         <View className="space-y-4 pb-10">
+         <View className="space-y-3 pb-8">
             <StandardButton 
                label="WHISPER" 
                variant="primary" 

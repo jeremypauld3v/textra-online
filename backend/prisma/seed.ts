@@ -32,6 +32,8 @@ async function main() {
 
   await prisma.recipeIngredient.deleteMany();
   await prisma.craftingRecipe.deleteMany();
+  await prisma.marketListing.deleteMany();
+  await prisma.inventoryItem.deleteMany();
   await prisma.lootTable.deleteMany();
   await prisma.resourceNodeTemplate.deleteMany();
   await prisma.monsterTemplate.deleteMany();
@@ -117,7 +119,7 @@ async function main() {
     for (const td of c.tiers) {
       for (const slot of c.slots) {
         const isWeapon = slot === "WEAPON";
-        await seedItem({
+        const itemData: any = {
           code: `${c.cls}_T${td.t}_${slot}`,
           name: `${td.pfx} ${slot.charAt(0)+slot.slice(1).toLowerCase()}`,
           emoji: (c.emoji as any)[slot],
@@ -130,7 +132,17 @@ async function main() {
           [c.stat]: td.pri,
           statLuk: td.luk,
           description: (td as any).desc
-        });
+        };
+        // Random unique stat bonuses (higher tiers get better chances)
+        const uniqueChance = td.t * 0.15; // T1=15%, T5=75%
+        if (Math.random() < uniqueChance) {
+          const uniqueStats = ['statLifesteal', 'statThorns', 'statGoldBonus', 'statExpBonus', 'statMoveSpeed', 'statHpRegen'];
+          const picked = uniqueStats[Math.floor(Math.random() * uniqueStats.length)];
+          const value = Math.round((td.t * 0.5 + Math.random() * td.t) * 10) / 10;
+          (itemData as Record<string, any>)[picked!] = value;
+        }
+        if (isWeapon) itemData.classType = c.cls;
+        await seedItem(itemData);
       }
     }
   }
@@ -204,51 +216,167 @@ async function main() {
   for (const item of mythicals) await seedItem(item);
 
   // ── DUNGEONS (4 total with escalating difficulty) ─────────────────────────
-  console.log("🏰 Seeding 4 Dungeons...");
+  console.log("🏰 Seeding 4 Dungeons & Dungeon Monsters...");
   const dungDefs = [
-    { name:"The Goblin Hive",    minDepth:100,  maxDepth:350,  minLevel:5,  floors:5,  boss:"Goblin Shaman",      bossHp:1200,  bossAtk:80,  bossDef:50,   exp:6000,   loot:"CHAOS_BLADE",      treasure:0.25 },
-    { name:"Abandoned Mine",     minDepth:400,  maxDepth:800,  minLevel:20, floors:8,  boss:"Elder Miner",        bossHp:4000,  bossAtk:250, bossDef:180,  exp:20000,  loot:"MOUNTAIN_CRUSHERS", treasure:0.20 },
-    { name:"The Lost Crypt",     minDepth:900,  maxDepth:1500, minLevel:35, floors:12, boss:"Lich Lord",          bossHp:12000, bossAtk:800, bossDef:500,  exp:60000,  loot:"WRAITH_CAPE",       treasure:0.15 },
-    { name:"Dragon's Sanctum",   minDepth:2000, maxDepth:null, minLevel:50, floors:20, boss:"Ancient Fire Dragon", bossHp:80000, bossAtk:5000,bossDef:3000, exp:500000, loot:"CALAMITY_RING",     treasure:0.10 },
+    {
+      name: "The Goblin Hive",
+      minDepth: 100,
+      maxDepth: 350,
+      minLevel: 5,
+      floors: 5,
+      boss: "Goblin Shaman",
+      bossHp: 1200,
+      bossAtk: 80,
+      bossDef: 50,
+      exp: 6000,
+      loot: "CHAOS_BLADE",
+      treasure: 0.25,
+      mobs: [
+        { name: "Goblin Scout", hp: 300, atk: 40, def: 20, exp: 200, loot: "T1_FIBER" },
+        { name: "Goblin Warrior", hp: 500, atk: 60, def: 30, exp: 350, loot: "IRON_ORE" }
+      ]
+    },
+    {
+      name: "Abandoned Mine",
+      minDepth: 400,
+      maxDepth: 800,
+      minLevel: 20,
+      floors: 8,
+      boss: "Elder Miner",
+      bossHp: 4000,
+      bossAtk: 250,
+      bossDef: 180,
+      exp: 20000,
+      loot: "MOUNTAIN_CRUSHERS",
+      treasure: 0.20,
+      mobs: [
+        { name: "Cave Bat", hp: 800, atk: 100, def: 50, exp: 800, loot: "T2_HIDE" },
+        { name: "Zombie Miner", hp: 1500, atk: 150, def: 90, exp: 1500, loot: "TIN_ORE" }
+      ]
+    },
+    {
+      name: "The Lost Crypt",
+      minDepth: 900,
+      maxDepth: 1500,
+      minLevel: 35,
+      floors: 12,
+      boss: "Lich Lord",
+      bossHp: 12000,
+      bossAtk: 800,
+      bossDef: 500,
+      exp: 60000,
+      loot: "WRAITH_CAPE",
+      treasure: 0.15,
+      mobs: [
+        { name: "Crypt Skeleton", hp: 3000, atk: 350, def: 200, exp: 5000, loot: "COPPER_ORE" },
+        { name: "Crypt Wraith", hp: 5000, atk: 500, def: 300, exp: 8000, loot: "T3_FIBER" }
+      ]
+    },
+    {
+      name: "Dragon's Sanctum",
+      minDepth: 2000,
+      maxDepth: null,
+      minLevel: 50,
+      floors: 20,
+      boss: "Ancient Fire Dragon",
+      bossHp: 80000,
+      bossAtk: 5000,
+      bossDef: 3000,
+      exp: 500000,
+      loot: "CALAMITY_RING",
+      treasure: 0.10,
+      mobs: [
+        { name: "Sanctum Dragonkin", hp: 15000, atk: 1500, def: 1000, exp: 40000, loot: "GOLD_ORE" },
+        { name: "Sanctum Cultist", hp: 20000, atk: 2000, def: 1200, exp: 60000, loot: "T4_FIBER" }
+      ]
+    },
   ];
   for (const d of dungDefs) {
-    await prisma.dungeonTemplate.create({ data: {
-      name:d.name, description:`Venture deep into ${d.name}.`,
-      minDepth:d.minDepth, maxDepth:d.maxDepth, minLevel:d.minLevel, floorCount:d.floors,
-      bossName:d.boss, bossHp:d.bossHp, bossAttack:d.bossAtk, bossDefense:d.bossDef,
-      bossExpReward:d.exp, lootItemCode:d.loot, treasureChance:d.treasure
+    // 1. Create Dungeon Template
+    const dungeon = await prisma.dungeonTemplate.create({ data: {
+      name: d.name,
+      description: `Venture deep into ${d.name}.`,
+      minDepth: d.minDepth,
+      maxDepth: d.maxDepth,
+      minLevel: d.minLevel,
+      floorCount: d.floors,
+      treasureChance: d.treasure
     }});
+
+    // 2. Create Boss Monster
+    const bossMonster = await prisma.monsterTemplate.create({ data: {
+      name: d.boss,
+      hp: d.bossHp,
+      attack: d.bossAtk,
+      defense: d.bossDef,
+      expReward: d.exp,
+      isBoss: true,
+      dungeonId: dungeon.id,
+      minDepth: d.minDepth
+    }});
+
+    // 3. Boss Loot Table Entry (100% chance to drop exclusive mythical)
+    await prisma.lootTable.create({ data: {
+      monsterTemplateId: bossMonster.id,
+      itemCode: d.loot,
+      chance: 1.0,
+      minQuantity: 1,
+      maxQuantity: 1
+    }});
+
+    // 4. Create Regular Mobs for the dungeon
+    for (const mob of d.mobs) {
+      const mobMonster = await prisma.monsterTemplate.create({ data: {
+        name: mob.name,
+        hp: mob.hp,
+        attack: mob.atk,
+        defense: mob.def,
+        expReward: mob.exp,
+        isBoss: false,
+        dungeonId: dungeon.id,
+        minDepth: d.minDepth
+      }});
+
+      // Mob loot
+      await prisma.lootTable.create({ data: {
+        monsterTemplateId: mobMonster.id,
+        itemCode: mob.loot,
+        chance: 0.5,
+        minQuantity: 1,
+        maxQuantity: 2
+      }});
+    }
   }
 
   // ── WORLD MONSTERS (20 types, each with specific loot) ───────────────────
   console.log("🐺 Seeding 20 World Monsters...");
   const monsterDefs = [
-    // Normal Monsters (common materials drop)
-    { name:"Forest Slime",      hp:60,    atk:8,    def:3,    exp:15,    minDepth:0,    loot:[{ item:"T1_FIBER", chance:0.7, min:1, max:3 }] },
-    { name:"Dire Wolf",         hp:200,   atk:30,   def:15,   exp:80,    minDepth:150,  loot:[{ item:"T2_HIDE",  chance:0.6, min:1, max:2 }] },
-    { name:"Skeleton Warrior",  hp:350,   atk:55,   def:30,   exp:150,   minDepth:350,  loot:[{ item:"IRON_ORE", chance:0.5, min:2, max:5 }] },
-    { name:"Crypt Spider",      hp:280,   atk:65,   def:20,   exp:140,   minDepth:500,  loot:[{ item:"T2_FIBER", chance:0.6, min:1, max:3 }] },
-    { name:"Minotaur",          hp:800,   atk:120,  def:80,   exp:400,   minDepth:750,  loot:[{ item:"T3_HIDE",  chance:0.5, min:1, max:2 }] },
-    { name:"Sea Serpent",       hp:600,   atk:100,  def:60,   exp:350,   minDepth:1000, loot:[{ item:"T3_FISH",  chance:0.6, min:1, max:3 }] },
-    { name:"Golem",             hp:1200,  atk:180,  def:160,  exp:700,   minDepth:1250, loot:[{ item:"COPPER_ORE",chance:0.5,min:2, max:4 }] },
-    { name:"Dark Mage",         hp:900,   atk:200,  def:80,   exp:600,   minDepth:1500, loot:[{ item:"T3_FIBER", chance:0.5, min:1, max:2 }, { item:"POTION_M", chance:0.3, min:1, max:1 }] },
-    { name:"Wyvern",            hp:2500,  atk:350,  def:280,  exp:1500,  minDepth:1800, loot:[{ item:"T4_HIDE",  chance:0.4, min:1, max:2 }] },
-    { name:"Vampire Lord",      hp:3500,  atk:500,  def:350,  exp:2500,  minDepth:2200, loot:[{ item:"T4_FIBER", chance:0.4, min:1, max:2 }, { item:"POTION_L", chance:0.2, min:1, max:1 }] },
+    // Normal Monsters (common materials drop) — Name, HP, ATK, DEF, EXP, Gold, Depth, Loot
+    { name:"Forest Slime",      hp:60,    atk:8,    def:3,    exp:20,    gold:5,    minDepth:0,    loot:[{ item:"T1_FIBER", chance:0.7, min:1, max:3 }] },
+    { name:"Dire Wolf",         hp:200,   atk:30,   def:15,   exp:100,   gold:25,   minDepth:150,  loot:[{ item:"T2_HIDE",  chance:0.6, min:1, max:2 }] },
+    { name:"Skeleton Warrior",  hp:350,   atk:55,   def:30,   exp:200,   gold:50,   minDepth:350,  loot:[{ item:"IRON_ORE", chance:0.5, min:2, max:5 }] },
+    { name:"Crypt Spider",      hp:280,   atk:65,   def:20,   exp:180,   gold:45,   minDepth:500,  loot:[{ item:"T2_FIBER", chance:0.6, min:1, max:3 }] },
+    { name:"Minotaur",          hp:800,   atk:120,  def:80,   exp:500,   gold:120,  minDepth:750,  loot:[{ item:"T3_HIDE",  chance:0.5, min:1, max:2 }] },
+    { name:"Sea Serpent",       hp:600,   atk:100,  def:60,   exp:450,   gold:100,  minDepth:1000, loot:[{ item:"T3_FISH",  chance:0.6, min:1, max:3 }] },
+    { name:"Golem",             hp:1200,  atk:180,  def:160,  exp:900,   gold:200,  minDepth:1250, loot:[{ item:"COPPER_ORE",chance:0.5,min:2, max:4 }] },
+    { name:"Dark Mage",         hp:900,   atk:200,  def:80,   exp:800,   gold:180,  minDepth:1500, loot:[{ item:"T3_FIBER", chance:0.5, min:1, max:2 }, { item:"POTION_M", chance:0.3, min:1, max:1 }] },
+    { name:"Wyvern",            hp:2500,  atk:350,  def:280,  exp:2000,  gold:450,  minDepth:1800, loot:[{ item:"T4_HIDE",  chance:0.4, min:1, max:2 }] },
+    { name:"Vampire Lord",      hp:3500,  atk:500,  def:350,  exp:3000,  gold:700,  minDepth:2200, loot:[{ item:"T4_FIBER", chance:0.4, min:1, max:2 }, { item:"POTION_L", chance:0.2, min:1, max:1 }] },
     // Elite Monsters (exclusive legendary drops)
-    { name:"Golden Slime",      hp:200,   atk:10,   def:800,  exp:5000,  minDepth:500,  loot:[{ item:"IRON_ORE",       chance:0.8, min:3, max:8 }, { item:"MIDAS_TOUCH",      chance:0.005, min:1, max:1 }] },
-    { name:"Grim Reaper",       hp:8000,  atk:1200, def:800,  exp:15000, minDepth:2500, loot:[{ item:"T5_HIDE",        chance:0.3, min:1, max:2 }, { item:"DEATHS_GRIP",       chance:0.01,  min:1, max:1 }] },
-    { name:"Air Spirit",        hp:5000,  atk:900,  def:500,  exp:12000, minDepth:3000, loot:[{ item:"T4_FIBER",       chance:0.4, min:1, max:2 }, { item:"HERMES_SANDALS",    chance:0.01,  min:1, max:1 }] },
-    { name:"Stone Golem",       hp:7000,  atk:800,  def:1200, exp:18000, minDepth:3500, loot:[{ item:"MITHRIL_ORE",    chance:0.3, min:1, max:3 }, { item:"MOUNTAIN_CRUSHERS", chance:0.01,  min:1, max:1 }] },
-    { name:"Chaos Demon",       hp:9000,  atk:1800, def:900,  exp:30000, minDepth:4000, loot:[{ item:"T5_FIBER",       chance:0.3, min:1, max:2 }, { item:"CHAOS_BLADE",       chance:0.005, min:1, max:1 }] },
-    { name:"Void Stalker",      hp:8500,  atk:1600, def:1000, exp:28000, minDepth:4500, loot:[{ item:"T5_HIDE",        chance:0.3, min:1, max:2 }, { item:"SHADOW_GARB",       chance:0.005, min:1, max:1 }] },
-    { name:"Arch-Lich",         hp:12000, atk:2500, def:1200, exp:50000, minDepth:5000, loot:[{ item:"T5_FIBER",       chance:0.2, min:1, max:2 }, { item:"MERLIN_STAFF",      chance:0.001, min:1, max:1 }] },
-    { name:"Void Creature",     hp:10000, atk:2000, def:1000, exp:40000, minDepth:5500, loot:[{ item:"T5_HIDE",        chance:0.2, min:1, max:2 }, { item:"GAZE_OF_VOID",      chance:0.01,  min:1, max:1 }] },
-    { name:"Fire Dragon",       hp:15000, atk:2800, def:1800, exp:70000, minDepth:6000, loot:[{ item:"T5_HIDE",        chance:0.2, min:1, max:2 }, { item:"PHOENIX_CAPE",      chance:0.001, min:1, max:1 }] },
-    { name:"Elder Dragon",      hp:20000, atk:3500, def:2500, exp:100000,minDepth:7000, loot:[{ item:"T5_HIDE",        chance:0.2, min:1, max:2 }, { item:"ARTEMIS_BOW",       chance:0.001, min:1, max:1 }] },
+    { name:"Golden Slime",      hp:200,   atk:10,   def:800,  exp:6000,  gold:5000, minDepth:500,  loot:[{ item:"IRON_ORE",       chance:0.8, min:3, max:8 }, { item:"MIDAS_TOUCH",      chance:0.005, min:1, max:1 }] },
+    { name:"Grim Reaper",       hp:8000,  atk:1200, def:800,  exp:20000, gold:4000, minDepth:2500, loot:[{ item:"T5_HIDE",        chance:0.3, min:1, max:2 }, { item:"DEATHS_GRIP",       chance:0.01,  min:1, max:1 }] },
+    { name:"Air Spirit",        hp:5000,  atk:900,  def:500,  exp:15000, gold:3000, minDepth:3000, loot:[{ item:"T4_FIBER",       chance:0.4, min:1, max:2 }, { item:"HERMES_SANDALS",    chance:0.01,  min:1, max:1 }] },
+    { name:"Stone Golem",       hp:7000,  atk:800,  def:1200, exp:22000, gold:5000, minDepth:3500, loot:[{ item:"MITHRIL_ORE",    chance:0.3, min:1, max:3 }, { item:"MOUNTAIN_CRUSHERS", chance:0.01,  min:1, max:1 }] },
+    { name:"Chaos Demon",       hp:9000,  atk:1800, def:900,  exp:35000, gold:8000, minDepth:4000, loot:[{ item:"T5_FIBER",       chance:0.3, min:1, max:2 }, { item:"CHAOS_BLADE",       chance:0.005, min:1, max:1 }] },
+    { name:"Void Stalker",      hp:8500,  atk:1600, def:1000, exp:32000, gold:7000, minDepth:4500, loot:[{ item:"T5_HIDE",        chance:0.3, min:1, max:2 }, { item:"SHADOW_GARB",       chance:0.005, min:1, max:1 }] },
+    { name:"Arch-Lich",         hp:12000, atk:2500, def:1200, exp:60000, gold:12000,minDepth:5000, loot:[{ item:"T5_FIBER",       chance:0.2, min:1, max:2 }, { item:"MERLIN_STAFF",      chance:0.001, min:1, max:1 }] },
+    { name:"Void Creature",     hp:10000, atk:2000, def:1000, exp:45000, gold:10000,minDepth:5500, loot:[{ item:"T5_HIDE",        chance:0.2, min:1, max:2 }, { item:"GAZE_OF_VOID",      chance:0.01,  min:1, max:1 }] },
+    { name:"Fire Dragon",       hp:15000, atk:2800, def:1800, exp:80000, gold:20000,minDepth:6000, loot:[{ item:"T5_HIDE",        chance:0.2, min:1, max:2 }, { item:"PHOENIX_CAPE",      chance:0.001, min:1, max:1 }] },
+    { name:"Elder Dragon",      hp:20000, atk:3500, def:2500, exp:120000,gold:30000,minDepth:7000, loot:[{ item:"T5_HIDE",        chance:0.2, min:1, max:2 }, { item:"ARTEMIS_BOW",       chance:0.001, min:1, max:1 }] },
   ];
 
   for (const m of monsterDefs) {
-    const mt = await prisma.monsterTemplate.create({ data: { name:m.name, hp:m.hp, attack:m.atk, defense:m.def, expReward:m.exp, minDepth:m.minDepth } });
+    const mt = await prisma.monsterTemplate.create({ data: { name:m.name, hp:m.hp, attack:m.atk, defense:m.def, expReward:m.exp, goldReward:m.gold, minDepth:m.minDepth } });
     for (const l of m.loot) {
       await prisma.lootTable.create({ data: { monsterTemplateId:mt.id, itemCode:l.item, chance:l.chance, minQuantity:l.min, maxQuantity:l.max } });
     }
@@ -404,7 +532,70 @@ async function main() {
     for (const i of r.ing) await prisma.recipeIngredient.create({ data:{ recipeId:cr.id, itemCode:i.code, quantity:i.qty } });
   }
 
-  console.log("✅ COMPLETE — Materials:25 | Equipment:75 | Accessories:15 | Mythicals:17 | Monsters:20 | Dungeons:4 | Nodes:20 | Recipes:93");
+  // ── WORLD ZONES ───────────────────
+  console.log("🗺️ Seeding World Zones...");
+  const zones = [
+    {
+      name: "Valoria Outskirts",
+      minDepth: 0,
+      maxDepth: 100,
+      dangerMultiplier: 1.0,
+      expMultiplier: 1.0,
+      dropChanceMultiplier: 1.0,
+      commonNodeTypes: ["WOOD", "FISHING"],
+      excludedNodeTypes: ["MITHRIL_ORE", "GOLD_ORE"]
+    },
+    {
+      name: "Whispering Woods",
+      minDepth: 101,
+      maxDepth: 300,
+      dangerMultiplier: 1.2,
+      expMultiplier: 1.2,
+      dropChanceMultiplier: 1.1,
+      commonNodeTypes: ["WOOD", "FIBER"],
+      excludedNodeTypes: ["MITHRIL_ORE"]
+    },
+    {
+      name: "Deepstone Caves",
+      minDepth: 301,
+      maxDepth: 600,
+      dangerMultiplier: 1.5,
+      expMultiplier: 1.5,
+      dropChanceMultiplier: 1.3,
+      commonNodeTypes: ["ORE"],
+      excludedNodeTypes: ["WOOD"]
+    },
+    {
+      name: "Scorched Wastes",
+      minDepth: 601,
+      maxDepth: 900,
+      dangerMultiplier: 2.0,
+      expMultiplier: 2.0,
+      dropChanceMultiplier: 1.6,
+      commonNodeTypes: ["ORE", "FIBER"],
+      excludedNodeTypes: ["WOOD"]
+    },
+    {
+      name: "Dragon's Lair",
+      minDepth: 901,
+      maxDepth: 99999,
+      dangerMultiplier: 3.0,
+      expMultiplier: 3.0,
+      dropChanceMultiplier: 2.2,
+      commonNodeTypes: ["ORE"],
+      excludedNodeTypes: ["WOOD", "FISHING"]
+    }
+  ];
+
+  for (const z of zones) {
+    await prisma.zone.upsert({
+      where: { name: z.name },
+      update: z,
+      create: z
+    });
+  }
+
+  console.log("✅ COMPLETE — Materials:25 | Equipment:75 | Accessories:15 | Mythicals:17 | Monsters:20 | Dungeons:4 | Nodes:20 | Recipes:93 | Zones:5");
 }
 
 main()

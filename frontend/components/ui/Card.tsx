@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewProps } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 interface CardProps extends ViewProps {
   children: React.ReactNode;
@@ -18,19 +18,19 @@ const Card = ({
   style,
   ...props 
 }: CardProps) => {
-  const baseClass = "relative overflow-hidden border border-white/5";
+  const baseClass = "relative overflow-hidden border border-white/[0.08]";
   const variantClasses = {
-    default: "bg-slate-900/60 rounded-[32px]",
-    flat: "bg-slate-900/40 rounded-2xl",
+    default: "bg-white/[0.04] rounded-2xl",
+    flat: "bg-white/[0.03] rounded-xl",
   };
   const paddingClasses = {
-    default: "p-6",
+    default: "p-5",
     none: "p-0",
   };
 
   return (
     <Animated.View 
-      entering={FadeIn.delay(delay).duration(300)}
+      entering={FadeInDown.delay(delay).duration(350).springify().damping(18)}
       className={`${baseClass} ${variantClasses[variant]} ${paddingClasses[padding]} ${className}`}
       style={style}
       {...props}

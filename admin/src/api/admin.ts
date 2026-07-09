@@ -45,6 +45,14 @@ export interface ItemTemplate {
   maxRoll: number;
   levelReq: number;
   equipSlot?: string;
+  classType?: string;
+  statLifesteal?: number;
+  statThorns?: number;
+  statGoldBonus?: number;
+  statExpBonus?: number;
+  statMoveSpeed?: number;
+  statHpRegen?: number;
+  sprites?: Record<string, string>;
 }
 
 export interface InventoryItem {
@@ -77,6 +85,8 @@ export interface Character {
   actionStatus: string;
   statPoints: number;
   currentDepth: number;
+  isBanned: boolean;
+  banReason?: string | null;
   user: { email: string };
   inventory?: InventoryItem[];
 }
@@ -104,6 +114,7 @@ export interface MonsterTemplate {
   isBoss: boolean;
   dungeonId: string | null;
   lootTable: LootTableEntry[];
+  sprites?: Record<string, string>;
 }
 
 export interface ResourceNodeTemplate {
@@ -114,6 +125,7 @@ export interface ResourceNodeTemplate {
   baseHp: number;
   xpReward: number;
   lootTable: LootTableEntry[];
+  sprites?: Record<string, string>;
 }
 
 export interface MarketListing {
@@ -143,6 +155,7 @@ export interface DungeonTemplate {
   lootMultiplier: number;
   expMultiplier: number;
   treasureChance: number;
+  sprites?: Record<string, string>;
 }
 
 export interface RecipeIngredient {
@@ -178,6 +191,20 @@ export interface Zone {
   dropChanceMultiplier: number;
   commonNodeTypes: string[];
   excludedNodeTypes: string[];
+  sprites?: Record<string, string>;
+}
+
+export interface UserReport {
+  id: string;
+  category: "BUG" | "PLAYER";
+  reporterId: string;
+  reporterName: string;
+  reportedId?: string | null;
+  reportedName?: string | null;
+  description: string;
+  status: "PENDING" | "INVESTIGATING" | "RESOLVED";
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WorldConfig {
@@ -199,9 +226,11 @@ export const adminApi = {
   updatePlayer: (id: string, data: Partial<Character>) => client.put<Character>(`/admin/players/${id}`, data),
   spawnItem: (id: string, itemCode: string, quantity: number) => client.post(`/admin/players/${id}/inventory`, { itemCode, quantity }),
   removeItem: (playerId: string, itemId: string) => client.delete(`/admin/players/${playerId}/inventory/${itemId}`),
-  removeItems: (playerId: string, itemIds: string[]) => client.delete(`/admin/players/${playerId}/inventory`, { data: { itemIds } }),
+	  removeItems: (playerId: string, itemIds: string[]) => client.delete(`/admin/players/${playerId}/inventory`, { data: { itemIds } }),
+	  banPlayer: (id: string, reason?: string) => client.post<Character>(`/admin/players/${id}/ban`, { reason }),
+	  unbanPlayer: (id: string) => client.post<Character>(`/admin/players/${id}/unban`),
 
-  // Monsters
+	  // Monsters
   getMonsters: () => client.get<MonsterTemplate[]>('/admin/monsters'),
   createMonster: (data: Partial<MonsterTemplate>) => client.post<MonsterTemplate>('/admin/monsters', data),
   updateMonster: (id: string, data: Partial<MonsterTemplate>) => client.put<MonsterTemplate>(`/admin/monsters/${id}`, data),
@@ -235,6 +264,10 @@ export const adminApi = {
   updateZone: (id: string, data: Partial<Zone>) => client.put<Zone>(`/admin/zones/${id}`, data),
   deleteZone: (id: string) => client.delete(`/admin/zones/${id}`),
   
+  // Reports
+  getReports: () => client.get<UserReport[]>('/admin/reports'),
+  updateReportStatus: (id: string, status: string) => client.put<UserReport>(`/admin/reports/${id}/status`, { status }),
+
   // System
   broadcast: (message: string) => client.post('/admin/broadcast', { message }),
   getConfig: () => client.get<WorldConfig>('/admin/config'),

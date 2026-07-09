@@ -4,7 +4,7 @@ interface ProgressBarProps {
   current: number;
   max: number;
   label?: string;
-  color?: "rose" | "indigo" | "emerald" | "amber" | "fuchsia";
+  color?: "rose" | "indigo" | "emerald" | "amber" | "fuchsia" | "mystic" | "gold" | "verdant" | "crimson";
   size?: "xs" | "sm" | "md" | "lg";
   showValues?: boolean;
   hideLabel?: boolean;
@@ -23,64 +23,51 @@ export default function ProgressBar({
 }: ProgressBarProps) {
   const percentage = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
 
-  const getColorStyles = () => {
-    switch (color) {
-      case "rose": return "bg-rose-600 shadow-[0_0_15px_rgba(225,29,72,0.6)]"; // Health/Vitality
-      case "emerald": return "bg-emerald-600 shadow-[0_0_15px_rgba(5,150,105,0.6)]"; // Experience
-      case "amber": return "bg-amber-500 shadow-[0_0_15px_rgba(217,119,6,0.6)]"; // Energy
-      case "fuchsia": return "bg-fuchsia-600 shadow-[0_0_15px_rgba(192,38,211,0.6)]"; // Magic
-      default: return "bg-indigo-600 shadow-[0_0_15px_rgba(79,70,229,0.6)]";
-    }
-  };
-
-  const getFrameColor = () => {
-    switch (color) {
-      case "rose": return "border-rose-900/50";
-      case "amber": return "border-amber-900/50";
-      default: return "border-slate-800";
-    }
-  };
-
   const getHeight = () => {
     switch (size) {
-      case "xs": return "h-1";
-      case "sm": return "h-2";
-      case "lg": return "h-5";
-      default: return "h-3";
+      case "xs": return "h-[2px]";
+      case "sm": return "h-1";
+      case "lg": return "h-4";
+      default: return "h-2";
+    }
+  };
+
+  const getColorStyles = () => {
+    switch (color) {
+      case "rose": return "bg-rose-500";
+      case "emerald": return "bg-emerald-500";
+      case "amber": return "bg-amber-500";
+      case "fuchsia": return "bg-fuchsia-500";
+      case "mystic": return "bg-mystic";
+      case "gold": return "bg-gold";
+      case "verdant": return "bg-verdant";
+      case "crimson": return "bg-crimson";
+      default: return "bg-white";
     }
   };
 
   return (
     <View className={`w-full ${className}`}>
       {!hideLabel && (label || showValues) && (
-        <View className="flex-row justify-between mb-2 px-1">
+        <View className="flex-row justify-between mb-1.5 px-0.5">
           {label && (
-            <Text className="uppercase text-[9px] font-pixel-bold tracking-[2px] text-slate-400">
+            <Text className="uppercase text-[8px] font-pixel-bold tracking-[2px] text-white/30">
               {label}
             </Text>
           )}
           {showValues && (
-            <Text className="text-slate-500 text-[9px] font-pixel-bold">
+            <Text className="text-white/25 text-[8px] font-pixel-bold">
               {Math.floor(current)} / {max}
             </Text>
           )}
         </View>
       )}
 
-      {/* 🏛️ ORNATE METAL FRAME */}
-      <View className={`p-[2px] rounded-lg bg-slate-900 border ${getFrameColor()} shadow-2xl`}>
-         <View className={`${getHeight()} bg-black/40 rounded-md overflow-hidden`}>
-            {/* 🌠 GLOWING PROGRESS FILL */}
-            <View 
-              className={`h-full rounded-md ${getColorStyles()}`} 
-              style={{ width: `${percentage}%` }} 
-            >
-               {/* 🕯️ TIP GLOW */}
-               {percentage > 0 && (
-                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, backgroundColor: 'rgba(255,255,255,0.3)' }} />
-               )}
-            </View>
-         </View>
+      <View className={`${getHeight()} bg-white/[0.08] rounded-full overflow-hidden`}>
+        <View 
+          className={`h-full rounded-full ${getColorStyles()}`}
+          style={{ width: `${percentage}%` }} 
+        />
       </View>
     </View>
   );

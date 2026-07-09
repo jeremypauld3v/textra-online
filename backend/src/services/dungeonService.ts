@@ -8,6 +8,21 @@ import { gameDataManager } from "./gameDataManager.js";
 import { GAME_BALANCE } from "../constants/gameBalance.js";
 import { resolveLootRolls } from "./combatEngine.js";
 
+function getPlayerClass(weaponCode: string | null): "WARRIOR" | "ARCHER" | "MAGE" {
+  if (!weaponCode) return "WARRIOR";
+  const code = weaponCode.toUpperCase();
+  if (code.startsWith("WARRIOR") || code === "EXCALIBUR" || code === "CHAOS_BLADE") {
+    return "WARRIOR";
+  }
+  if (code.startsWith("ARCHER") || code === "ARTEMIS_BOW") {
+    return "ARCHER";
+  }
+  if (code.startsWith("MAGE") || code === "MERLIN_STAFF") {
+    return "MAGE";
+  }
+  return "WARRIOR";
+}
+
 /**
  * 🏰 DungeonService
  * Handles dungeon encounters — enter, fight rooms, treasure, boss.
@@ -173,6 +188,8 @@ export class DungeonService {
     };
   }
 
+
+
   /**
    * Fight the current dungeon floor
    */
@@ -286,24 +303,132 @@ export class DungeonService {
     const combatLog: any[] = [];
     let turn = 1;
 
+    const playerClass = getPlayerClass(stats.weaponCode);
+    let enemyStunned = false;
+    let playerEvading = false;
+    let berserkActive = false;
+    let rejuvenateUsed = false;
+
     while (playerHp > 0 && enemyHp > 0 && turn <= 100) {
-      // Player attacks
-      let pDmg = Math.max(1, Math.floor(stats.atk - floor.defense + (Math.random() * 4)));
-      const isCrit = Math.random() < (character.luk * 0.02);
-      if (isCrit) pDmg *= 2;
-      enemyHp -= pDmg;
-      combatLog.push({ turn, attacker: "Player", damage: pDmg, message: `You strike ${floor.name} for ${pDmg}!${isCrit ? ' CRIT!' : ''}` });
+      let turnActionTaken = false;
+
+      // 1. Mage Heal Check (triggers once per battle at <40% HP)
+      if (playerClass === "MAGE" && !rejuvenateUsed && (playerHp / character.maxHp) < 0.40) {
+        rejuvenateUsed = true;
+        const healAmount = Math.floor(stats.int * 4.0);
+        playerHp = Math.min(character.maxHp, playerHp + healAmount);
+        combatLog.push({
+          turn,
+          attacker: "Player",
+          damage: 0,
+          message: `✨ REJUVENATE! You channel mana to restore +${healAmount} HP!`
+        });
+      }
+
+      // 2. Warrior Berserk Check (triggers once at <30% HP, lasts rest of battle)
+      if (playerClass === "WARRIOR" && !berserkActive && (playerHp / character.maxHp) < 0.30) {
+        berserkActive = true;
+        combatLog.push({
+          turn,
+          attacker: "Player",
+          damage: 0,
+          message: "🩸 BERSERK! You enter a bloodlust rage, increasing ATK by 50% for the rest of battle!"
+        });
+      }
+
+      // 3. Player Active Skills
+      if (playerClass === "MAGE" && Math.random() < 0.25) {
+        // mage fireball
+        const isCrit = Math.random() < (character.luk * 0.02);
+        const baseDmg = stats.int * 3.5;
+        const damage = Math.floor(isCrit ? baseDmg * 2 : baseDmg);
+        enemyHp -= damage;
+        combatLog.push({
+          turn,
+          attacker: "Player",
+          damage,
+          message: `🔥 FIREBALL! You blast ${floor.name} with raw arcane magic! (-${damage})`,
+          isCrit
+        });
+        turnActionTaken = true;
+      } 
+      else if (playerClass === "WARRIOR" && Math.random() < 0.20) {
+        // warrior shield slam
+        const isCrit = Math.random() < (character.luk * 0.02);
+        const baseDmg = stats.def * 1.5;
+        const damage = Math.floor(isCrit ? baseDmg * 2 : baseDmg);
+        enemyHp -= damage;
+        enemyStunned = true;
+        combatLog.push({
+          turn,
+          attacker: "Player",
+          damage,
+          message: `🛡️ SHIELD SLAM! You hit ${floor.name} with your shield, stunning them! (-${damage})`,
+          isCrit
+        });
+        turnActionTaken = true;
+      } 
+      else if (playerClass === "ARCHER" && Math.random() < Math.min(0.40, stats.agi / 1000)) {
+        // archer double shot
+        const pDmg1 = Math.max(1, Math.floor(stats.atk - floor.defense + (Math.random() * 4)));
+        const pDmg2 = Math.max(1, Math.floor(stats.atk - floor.defense + (Math.random() * 4)));
+        const isCrit1 = Math.random() < (character.luk * 0.02);
+        const isCrit2 = Math.random() < (character.luk * 0.02);
+        const finalDmg1 = isCrit1 ? pDmg1 * 2 : pDmg1;
+        const finalDmg2 = isCrit2 ? pDmg2 * 2 : pDmg2;
+        const totalDmg = finalDmg1 + finalDmg2;
+        enemyHp -= totalDmg;
+        combatLog.push({
+          turn,
+          attacker: "Player",
+          damage: totalDmg,
+          message: `🏹 DOUBLE SHOT! You fire two arrows in rapid succession! (-${totalDmg})`,
+          isCrit: isCrit1 || isCrit2
+        });
+        turnActionTaken = true;
+      }
+      else if (playerClass === "ARCHER" && !playerEvading && Math.random() < Math.min(0.40, stats.agi / 800)) {
+        // archer evasion prep
+        playerEvading = true;
+        combatLog.push({
+          turn,
+          attacker: "Player",
+          damage: 0,
+          message: "💨 DEFENSIVE ROLL! You prepare to evade the enemy's next strike!"
+        });
+      }
+
+      // 4. Default normal attack if no skill action taken
+      if (!turnActionTaken) {
+        let currentAtk = stats.atk;
+        if (berserkActive) currentAtk *= 1.5;
+        let pDmg = Math.max(1, Math.floor(currentAtk - floor.defense + (Math.random() * 4)));
+        const isCrit = Math.random() < (character.luk * 0.02);
+        if (isCrit) pDmg *= 2;
+        enemyHp -= pDmg;
+        combatLog.push({ turn, attacker: "Player", damage: pDmg, message: `You strike ${floor.name} for ${pDmg}!${isCrit ? ' CRIT!' : ''}`, isCrit });
+      }
 
       if (enemyHp <= 0) break;
 
-      // Enemy attacks
-      let eDmg = Math.max(1, Math.floor(floor.attack - stats.def + (Math.random() * 3)));
-      const dodged = Math.random() < (stats.agi * 0.015);
-      if (dodged) {
-        combatLog.push({ turn, attacker: "Enemy", damage: 0, message: `${floor.name} attacks but you dodge!` });
-      } else {
-        playerHp -= eDmg;
-        combatLog.push({ turn, attacker: "Enemy", damage: eDmg, message: `${floor.name} hits you for ${eDmg}!` });
+      // 5. Enemy Attacks
+      if (enemyStunned) {
+        enemyStunned = false;
+        combatLog.push({ turn, attacker: "Enemy", damage: 0, message: `💫 ${floor.name} is stunned and unable to move!` });
+      }
+      else if (playerEvading) {
+        playerEvading = false;
+        combatLog.push({ turn, attacker: "Enemy", damage: 0, message: `💨 MISS! You deftly dodge ${floor.name}'s attack!` });
+      }
+      else {
+        let eDmg = Math.max(1, Math.floor(floor.attack - stats.def + (Math.random() * 3)));
+        const dodged = Math.random() < (stats.agi * 0.015);
+        if (dodged) {
+          combatLog.push({ turn, attacker: "Enemy", damage: 0, message: `${floor.name} attacks but you dodge!` });
+        } else {
+          playerHp -= eDmg;
+          combatLog.push({ turn, attacker: "Enemy", damage: eDmg, message: `${floor.name} hits you for ${eDmg}!` });
+        }
       }
       turn++;
     }

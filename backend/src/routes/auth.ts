@@ -72,7 +72,7 @@ export async function authRoutes(server: FastifyInstance) {
     try {
       const user = await prisma.user.findUnique({ 
         where: { email },
-        include: { characters: true }
+        include: { characters: { select: { id: true, isBanned: true, banReason: true } } }
       });
 
       if (!user) {
@@ -84,6 +84,15 @@ export async function authRoutes(server: FastifyInstance) {
         return reply.status(401).send({ error: "Invalid credentials" });
       }
 
+      // Check if any of the user's characters are banned
+      const bannedChar = user.characters.find(c => c.isBanned);
+      if (bannedChar) {
+        return reply.status(403).send({
+          error: "ACCOUNT_BANNED",
+          message: bannedChar.banReason || "Your account has been banned.",
+        });
+      }
+
       const characterId = user.characters[0]?.id;
 
       // Generate JWT Token
@@ -93,7 +102,7 @@ export async function authRoutes(server: FastifyInstance) {
         email: user.email 
       });
 
-      return reply.send({ token, characterId, userId: user.id, message: "Login successful" });
+      return reply.send({ token, characterId, userId: user.id, isAdmin: user.isAdmin, message: "Login successful" });
     } catch (err: any) {
       server.log.error(err);
       return reply.status(500).send({ error: "Internal Server Error" });

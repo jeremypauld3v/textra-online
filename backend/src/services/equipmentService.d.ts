@@ -14,6 +14,13 @@ export declare class EquipmentService {
         rolledAgi: number | null;
         rolledInt: number | null;
         rolledLuk: number | null;
+        rolledDex: number | null;
+        rolledLifesteal: number | null;
+        rolledThorns: number | null;
+        rolledGoldBonus: number | null;
+        rolledExpBonus: number | null;
+        rolledMoveSpeed: number | null;
+        rolledHpRegen: number | null;
     };
     private statsCache;
     private CACHE_TTL;
@@ -57,6 +64,8 @@ export declare class EquipmentService {
         equippedRing1Id: string | null;
         equippedRing2Id: string | null;
         gold: number;
+        isBanned: boolean;
+        banReason: string | null;
     }>;
     /**
      * 🚶 Unequip an item from a slot
@@ -98,6 +107,8 @@ export declare class EquipmentService {
         equippedRing1Id: string | null;
         equippedRing2Id: string | null;
         gold: number;
+        isBanned: boolean;
+        banReason: string | null;
     }>;
     /**
      * 📊 Calculate Total Stats (Base + Gear)

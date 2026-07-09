@@ -9,6 +9,7 @@ export interface ZoneData {
     dropChanceMultiplier: number;
     commonNodeTypes: string[];
     excludedNodeTypes: string[];
+    sprites?: any;
 }
 
 class ZoneService {

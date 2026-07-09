@@ -16,20 +16,33 @@ export class EquipmentService {
     const minMult = (template.minRoll ?? 0.8) + luckBonus;
     const maxMult = (template.maxRoll ?? 1.2) + luckBonus;
 
-    const roll = (base: number) => {
+    const rollInt = (base: number | null | undefined) => {
       if (!base) return null;
       const mult = Math.min(2.0, minMult + (Math.random() * (maxMult - minMult)));
       const rolled = Math.floor(base * mult);
       return Math.min(GAME_BALANCE.MAX_STAT_VALUE, rolled);
     };
 
+    const rollFloat = (base: number | null | undefined) => {
+      if (!base) return null;
+      const mult = Math.min(2.0, minMult + (Math.random() * (maxMult - minMult)));
+      return Math.round(base * mult * 10) / 10;
+    };
+
     return {
-      rolledAtk: roll(template.statAtk),
-      rolledDef: roll(template.statDef),
-      rolledStr: roll(template.statStr),
-      rolledAgi: roll(template.statAgi),
-      rolledInt: roll(template.statInt),
-      rolledLuk: roll(template.statLuk),
+      rolledAtk: rollInt(template.statAtk),
+      rolledDef: rollInt(template.statDef),
+      rolledStr: rollInt(template.statStr),
+      rolledAgi: rollInt(template.statAgi),
+      rolledInt: rollInt(template.statInt),
+      rolledLuk: rollInt(template.statLuk),
+      rolledDex: rollInt(template.statDex),
+      rolledLifesteal: rollFloat(template.statLifesteal),
+      rolledThorns: rollFloat(template.statThorns),
+      rolledGoldBonus: rollFloat(template.statGoldBonus),
+      rolledExpBonus: rollFloat(template.statExpBonus),
+      rolledMoveSpeed: rollFloat(template.statMoveSpeed),
+      rolledHpRegen: rollFloat(template.statHpRegen),
     };
   }
 
@@ -169,26 +182,45 @@ export class EquipmentService {
     let bonusAgi = gear.reduce((acc, i) => acc + (i?.rolledAgi ?? i?.template.statAgi ?? 0), 0);
     let bonusInt = gear.reduce((acc, i) => acc + (i?.rolledInt ?? i?.template.statInt ?? 0), 0);
     let bonusLuk = gear.reduce((acc, i) => acc + (i?.rolledLuk ?? i?.template.statLuk ?? 0), 0);
+    let bonusDex = gear.reduce((acc, i) => acc + (i?.rolledDex ?? i?.template.statDex ?? 0), 0);
+
+    // Unique stats (percentages, accumulate additively)
+    let totalLifesteal = gear.reduce((acc, i) => acc + (i?.rolledLifesteal ?? i?.template.statLifesteal ?? 0), 0);
+    let totalThorns = gear.reduce((acc, i) => acc + (i?.rolledThorns ?? i?.template.statThorns ?? 0), 0);
+    let totalGoldBonus = gear.reduce((acc, i) => acc + (i?.rolledGoldBonus ?? i?.template.statGoldBonus ?? 0), 0);
+    let totalExpBonus = gear.reduce((acc, i) => acc + (i?.rolledExpBonus ?? i?.template.statExpBonus ?? 0), 0);
+    let totalMoveSpeed = gear.reduce((acc, i) => acc + (i?.rolledMoveSpeed ?? i?.template.statMoveSpeed ?? 0), 0);
+    let totalHpRegen = gear.reduce((acc, i) => acc + (i?.rolledHpRegen ?? i?.template.statHpRegen ?? 0), 0);
 
     const totalStr = character.str + bonusStr;
     const totalAgi = character.agi + bonusAgi;
     const totalInt = character.int + bonusInt;
     const totalLuk = character.luk + bonusLuk;
 
-    // Derive final ATK — detect class by item code prefix instead of name
+    // Derive final ATK — detect class by weapon's classType field
     let finalAtk = totalAtk;
+    let classType: string | null = null;
     const weaponTemplate = weapon?.template;
 
     if (weaponTemplate) {
-      const code = weaponTemplate.code.toUpperCase();
-      if (code.startsWith("WARRIOR") || code === "EXCALIBUR" || code === "CHAOS_BLADE") {
-        finalAtk += (totalStr * 3);       // Warrior scaling
-      } else if (code.startsWith("ARCHER") || code === "ARTEMIS_BOW") {
-        finalAtk += (totalAgi * 3);       // Archer scaling
-      } else if (code.startsWith("MAGE") || code === "MERLIN_STAFF") {
-        finalAtk += (totalInt * 3);       // Mage scaling
+      classType = weaponTemplate.classType || null;
+      
+      // Fallback: if no classType set, try code prefix for backwards compatibility
+      if (!classType) {
+        const code = weaponTemplate.code.toUpperCase();
+        if (code.startsWith("WARRIOR") || code === "EXCALIBUR" || code === "CHAOS_BLADE") classType = "WARRIOR";
+        else if (code.startsWith("ARCHER") || code === "ARTEMIS_BOW") classType = "ARCHER";
+        else if (code.startsWith("MAGE") || code === "MERLIN_STAFF") classType = "MAGE";
+      }
+
+      if (classType === "WARRIOR") {
+        finalAtk += (totalStr * 3);
+      } else if (classType === "ARCHER") {
+        finalAtk += (totalAgi * 3);
+      } else if (classType === "MAGE") {
+        finalAtk += (totalInt * 3);
       } else {
-        finalAtk += (totalStr * 2);       // Hybrid / unknown fallback
+        finalAtk += (totalStr * 2);       // Hybrid / unknown
       }
     } else {
       finalAtk += (totalStr * 1.5);       // Unarmed penalty
@@ -198,15 +230,35 @@ export class EquipmentService {
 
     const finalMaxEnergy = 100 + (totalInt * 1);
 
+    // Derived stats for character display
+    const critChance = Math.min(0.8, totalLuk * GAME_BALANCE.BASE_CRIT_MODIFIER) * 100;
+    const dodgeChance = Math.min(0.40, totalAgi / 1000) * 100;
+    const armorPen = Math.min(0.8, character.dex / 1000) * 100;
+    const gatherPower = character.dex * 2 + totalInt * 0.5;
+    const pvpFlee = Math.min(0.8, totalAgi / GAME_BALANCE.PVP_FLEE_AGI_DIVISOR) * 100;
+
     const finalStats = {
       atk: finalAtk,
       def: finalDef,
       str: totalStr,
       agi: totalAgi,
-      dex: character.dex,
+      dex: character.dex + bonusDex,
       int: totalInt,
       luk: totalLuk,
-      maxEnergy: finalMaxEnergy
+      maxEnergy: finalMaxEnergy,
+      weaponCode: weaponTemplate ? weaponTemplate.code.toUpperCase() : null,
+      classType: classType,
+      critChance,
+      dodgeChance,
+      armorPen,
+      gatherPower,
+      pvpFlee,
+      lifesteal: totalLifesteal,
+      thorns: totalThorns,
+      goldBonus: totalGoldBonus,
+      equipExpBonus: totalExpBonus,
+      moveSpeed: totalMoveSpeed,
+      hpRegen: totalHpRegen,
     };
 
     // Save to cache

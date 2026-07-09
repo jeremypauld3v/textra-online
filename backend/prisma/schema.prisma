@@ -58,6 +58,8 @@ model Character {
   equippedRing1Id   String?
   equippedRing2Id   String?
   gold             Int             @default(100)
+  isBanned         Boolean         @default(false)
+  banReason        String?
   battleLogs       BattleLog[]
   user             User            @relation(fields: [userId], references: [id])
   inventory        InventoryItem[]
@@ -126,6 +128,13 @@ model InventoryItem {
   rolledAgi   Int?
   rolledInt   Int?
   rolledLuk   Int?
+  rolledDex   Int?
+  rolledLifesteal Float?
+  rolledThorns    Float?
+  rolledGoldBonus Float?
+  rolledExpBonus  Float?
+  rolledMoveSpeed Float?
+  rolledHpRegen   Float?
   character   Character    @relation(fields: [characterId], references: [id])
   template    ItemTemplate @relation(fields: [itemCode], references: [code])
 }
@@ -162,11 +171,19 @@ model ItemTemplate {
   maxRoll        Float              @default(1.2)
   levelReq       Int                @default(1)
   equipSlot      String?
+  classType      String?  // WARRIOR | ARCHER | MAGE — only for EQUIPMENT weapons
+  statLifesteal  Float?   @default(0)
+  statThorns     Float?   @default(0)
+  statGoldBonus  Float?   @default(0)
+  statExpBonus   Float?   @default(0)
+  statMoveSpeed  Float?   @default(0)
+  statHpRegen    Float?   @default(0)
   recipes        CraftingRecipe[]
   inventoryItems InventoryItem[]
   lootTables     LootTable[]
   marketListings MarketListing[]
   ingredients    RecipeIngredient[]
+  sprites        Json?
 }
 
 model Rarity {
@@ -194,6 +211,7 @@ model MonsterTemplate {
   dungeonId   String?          // If null, it's an Open World mob
   dungeon     DungeonTemplate? @relation(fields: [dungeonId], references: [id])
   lootTable   LootTable[]
+  sprites     Json?
 }
 
 model LootTable {
@@ -255,6 +273,7 @@ model DungeonTemplate {
   lootMultiplier Float   @default(1.0)
   expMultiplier  Float   @default(1.0)
   treasureChance Float   @default(0.3)
+  sprites        Json?
   monsters       MonsterTemplate[]
 }
 
@@ -266,6 +285,7 @@ model ResourceNodeTemplate {
   baseHp    Int         @default(20)
   xpReward  Int         @default(5)
   lootTable LootTable[]
+  sprites   Json?
 }
 
 model Zone {
@@ -278,6 +298,23 @@ model Zone {
   dropChanceMultiplier Float  @default(1.0)
   commonNodeTypes   String[] // Weighted towards these types
   excludedNodeTypes String[] // Never spawn these types
+  sprites           Json?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model UserReport {
+  id           String   @id @default(uuid())
+  category     String   // "BUG" | "PLAYER"
+  reporterId   String
+  reporterName String
+  reportedId   String?  // Optional Character ID of reported player
+  reportedName String?  // Optional Character Name of reported player
+  description  String
+  status       String   @default("PENDING") // PENDING | INVESTIGATING | RESOLVED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category])
+  @@index([status])
 }

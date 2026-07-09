@@ -19,15 +19,15 @@ export const CustomAlert: React.FC<CustomAlertProps> = ({ visible, title, messag
   const getIcon = () => {
     switch (type) {
       case "success":
-        return { name: "checkmark-circle", color: "#10b981", variant: "success" };
+        return { name: "checkmark-circle", color: "#ffffff" };
       case "warning":
-        return { name: "alert-circle", color: "#f59e0b", variant: "warning" };
+        return { name: "alert-circle", color: "#ffffff" };
       case "error":
-        return { name: "close-circle", color: "#ef4444", variant: "danger" };
+        return { name: "close-circle", color: "rgba(255,255,255,0.4)" };
       case "trade":
-        return { name: "swap-horizontal", color: "#6366f1", variant: "primary" };
+        return { name: "swap-horizontal", color: "#ffffff" };
       default:
-        return { name: "information-circle", color: "#3b82f6", variant: "primary" };
+        return { name: "information-circle", color: "#ffffff" };
     }
   };
 
@@ -36,17 +36,17 @@ export const CustomAlert: React.FC<CustomAlertProps> = ({ visible, title, messag
   return (
     <BaseModal visible={visible} onClose={onCancel || (() => {})} showClose={false}>
       <View className="items-center mb-6">
-        <View className="w-16 h-16 rounded-2xl justify-center items-center mb-4" style={{ backgroundColor: iconData.color + "20" }}>
-          <Ionicons name={iconData.name as any} size={32} color={iconData.color} />
+        <View className="w-12 h-12 bg-white/5 border border-white/10 rounded-xl justify-center items-center mb-4">
+          <Ionicons name={iconData.name as any} size={24} color={iconData.color} />
         </View>
 
-        <Text className="text-white text-xl uppercase text-center">{title}</Text>
-        <Text className="text-slate-500 text-sm text-center mt-2 leading-5 tracking-tight">{message}</Text>
+        <Text className="text-white text-lg uppercase text-center font-pixel-bold">{title}</Text>
+        <Text className="text-white/40 text-xs text-center mt-2 leading-4 tracking-tight font-sans">{message}</Text>
       </View>
 
       <View className="flex-row space-x-3">
         {onCancel && <StandardButton label={cancelText} variant="secondary" className="flex-1" onPress={onCancel} />}
-        <StandardButton label={confirmText} variant={iconData.variant as any} className="flex-1" onPress={onConfirm || (() => {})} />
+        <StandardButton label={confirmText} variant="primary" className="flex-1" onPress={onConfirm || (() => {})} />
       </View>
     </BaseModal>
   );

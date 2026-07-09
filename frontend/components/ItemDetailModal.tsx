@@ -14,6 +14,15 @@ interface ItemDetailModalProps {
   onMarketList?: () => void;
 }
 
+const RARITY_COLORS: Record<string, string> = {
+  COMMON: "text-white/40",
+  UNCOMMON: "text-emerald-400",
+  RARE: "text-blue-400",
+  EPIC: "text-purple-400",
+  LEGENDARY: "text-amber-400",
+  MYTHICAL: "text-rose-400",
+};
+
 export default function ItemDetailModal({
   visible,
   onClose,
@@ -27,6 +36,7 @@ export default function ItemDetailModal({
 
   const type = template.type;
   const rarity = typeof template.rarity === 'object' ? template.rarity.id : template.rarity || template.rarityId;
+  const rarityColor = RARITY_COLORS[rarity] || "text-white";
 
   // Combine base stats and rolled stats
   const stats = {
@@ -43,47 +53,34 @@ export default function ItemDetailModal({
 
   const hasStats = Object.values(stats).some(val => val > 0);
 
-  const statColors: Record<string, { bg: string, text: string, border: string }> = {
-    ATK: { bg: "bg-rose-500/10", text: "text-rose-400", border: "border-rose-500/20" },
-    DEF: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
-    STR: { bg: "bg-orange-500/10", text: "text-orange-400", border: "border-orange-500/20" },
-    AGI: { bg: "bg-sky-500/10", text: "text-sky-400", border: "border-sky-500/20" },
-    INT: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20" },
-    LUK: { bg: "bg-yellow-500/10", text: "text-yellow-400", border: "border-yellow-500/20" },
-    DEX: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
-    HEAL: { bg: "bg-indigo-500/10", text: "text-indigo-400", border: "border-indigo-500/20" },
-    ENERGY: { bg: "bg-cyan-500/10", text: "text-cyan-400", border: "border-cyan-500/20" },
-  };
-
   return (
     <BaseModal visible={visible} onClose={onClose} position="bottom">
-      <View className="pb-8 pt-4 items-center">
-        <View className="w-24 h-24 bg-slate-900 border border-white/10 rounded-[32px] items-center justify-center mb-8 shadow-2xl">
-          <Text className="text-4xl">{template.emoji}</Text>
+      <View className="pb-6 pt-2 items-center">
+        <View className="w-20 h-20 bg-white/5 border border-white/10 rounded-2xl items-center justify-center mb-6 shadow-2xl">
+          <Text className="text-3xl">{template.emoji}</Text>
         </View>
 
-        <Text className="text-white text-2xl font-pixel-bold uppercase text-center mb-2 tracking-tight">
+        <Text className="text-white text-xl font-pixel-bold uppercase text-center mb-1.5 tracking-tight">
           {template.name}
         </Text>
         
-        <View className="flex-row items-center mb-8 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
-          <Text className="text-indigo-400 text-[9px] font-pixel-bold uppercase tracking-widest">{rarity}</Text>
-          <View className="w-1 h-1 rounded-full bg-slate-700 mx-3" />
-          <Text className="text-slate-500 text-[9px] font-pixel-bold uppercase tracking-widest">{type}</Text>
+        <View className="flex-row items-center mb-6 bg-white/[0.04] px-3.5 py-1 rounded-full border border-white/5">
+          <Text className={`${rarityColor} text-[8px] font-pixel-bold uppercase tracking-widest`}>{rarity}</Text>
+          <View className="w-0.5 h-0.5 rounded-full bg-white/20 mx-2" />
+          <Text className="text-white/30 text-[8px] font-pixel-bold uppercase tracking-widest">{type}</Text>
         </View>
 
-        <View className="bg-slate-900/50 p-6 rounded-[32px] border border-white/5 mb-10 w-full">
-          <Text className="text-slate-400 text-xs leading-relaxed text-center font-sans italic mb-4">
+        <View className="bg-white/[0.02] p-4 rounded-xl border border-white/10 mb-6 w-full">
+          <Text className="text-frost-muted text-xs leading-relaxed text-center font-sans italic mb-3">
             &quot;{template.description || "An artifact of unknown origin, pulsing with latent energy."}&quot;
           </Text>
           
           {hasStats && (
-            <View className="flex-row flex-wrap justify-center pt-4 border-t border-white/5">
+            <View className="flex-row flex-wrap justify-center pt-3 border-t border-white/[0.04]">
               {Object.entries(stats).map(([label, val]) => {
-                const colors = statColors[label] || { bg: "bg-indigo-500/10", text: "text-indigo-400", border: "border-indigo-500/20" };
                 return val && val > 0 ? (
-                  <View key={label} className={`px-3 py-1 ${colors.bg} rounded-full mr-2 mb-2 border ${colors.border}`}>
-                    <Text className={`${colors.text} text-[8px] font-pixel-bold`}>{label} +{val}</Text>
+                  <View key={label} className={`px-2.5 py-1 bg-white/5 rounded border border-white/10 mr-1.5 mb-1.5`}>
+                    <Text className={`text-white/80 text-[7px] font-pixel-bold`}>{label} +{val}</Text>
                   </View>
                 ) : null;
               })}
@@ -91,7 +88,7 @@ export default function ItemDetailModal({
           )}
         </View>
 
-        <View className="w-full space-y-4">
+        <View className="w-full space-y-3">
           {type === "EQUIPMENT" && onEquip && item && (
             <StandardButton 
               label={isEquipped ? "Currently Bound" : "Bind to Spirit"}
@@ -113,8 +110,8 @@ export default function ItemDetailModal({
             />
           )}
           
-          <Pressable onPress={onClose} className="w-full py-2 items-center">
-            <Text className="text-slate-600 text-[8px] font-pixel-bold uppercase tracking-[4px]">Close</Text>
+          <Pressable onPress={onClose} className="w-full py-1.5 items-center">
+            <Text className="text-white/30 text-[8px] font-pixel-bold uppercase tracking-[3px]">Close</Text>
           </Pressable>
         </View>
       </View>

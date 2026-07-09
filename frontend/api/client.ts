@@ -1,8 +1,18 @@
 import axios from "axios";
 import { useAuthStore } from "../store/useAuthStore";
+import Constants from "expo-constants";
+
+const getApiHost = () => {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  const hostUri = Constants.expoConfig?.hostUri;
+  const hostIp = hostUri ? hostUri.split(":")[0] : "localhost";
+  return `http://${hostIp}:3000`;
+};
 
 export const apiClient = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL + "/api",
+  baseURL: getApiHost() + "/api",
   headers: {
     "Content-Type": "application/json",
   },

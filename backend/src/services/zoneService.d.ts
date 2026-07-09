@@ -7,6 +7,7 @@ export interface ZoneData {
     dropChanceMultiplier: number;
     commonNodeTypes: string[];
     excludedNodeTypes: string[];
+    sprites?: any;
 }
 declare class ZoneService {
     private cachedZones;
@@ -16,29 +17,31 @@ declare class ZoneService {
     getZoneAtDepth(depth: number): Promise<any>;
     createZone(data: ZoneData): Promise<{
         name: string;
+        sprites: import("@prisma/client/runtime/client").JsonValue | null;
         id: string;
         minDepth: number;
         maxDepth: number | null;
         expMultiplier: number;
-        createdAt: Date;
-        updatedAt: Date;
         dangerMultiplier: number;
         dropChanceMultiplier: number;
         commonNodeTypes: string[];
         excludedNodeTypes: string[];
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     updateZone(id: string, data: Partial<ZoneData>): Promise<{
         name: string;
+        sprites: import("@prisma/client/runtime/client").JsonValue | null;
         id: string;
         minDepth: number;
         maxDepth: number | null;
         expMultiplier: number;
-        createdAt: Date;
-        updatedAt: Date;
         dangerMultiplier: number;
         dropChanceMultiplier: number;
         commonNodeTypes: string[];
         excludedNodeTypes: string[];
+        createdAt: Date;
+        updatedAt: Date;
     }>;
     deleteZone(id: string): Promise<void>;
 }

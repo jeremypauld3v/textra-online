@@ -34,7 +34,7 @@ export default function CraftingScreen() {
       setRecipes(rData.recipes);
       setInventory(iData.inventory);
     } catch {
-      Toast.show({ type: "error", text1: "Forge Cold" });
+      // Silently fail — retry on next focus
     } finally {
       setLoading(false);
     }
@@ -89,17 +89,17 @@ export default function CraftingScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-[#020617] justify-center items-center">
-        <ActivityIndicator color="#f472b6" size="large" />
+      <View className="flex-1 bg-void justify-center items-center">
+        <ActivityIndicator color="#A78BFA" size="large" />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#020617]">
+    <View className="flex-1 bg-void">
       <View 
         className="flex-1 px-6"
-        style={{ paddingTop: Math.max(insets.top, 16) }}
+        style={{ paddingTop: Math.max(insets.top, 12) }}
       >
         
         <ScreenHeader 
@@ -118,7 +118,7 @@ export default function CraftingScreen() {
           tabs={CATEGORIES} 
           activeTab={selectedType} 
           onTabChange={setSelectedType} 
-          className="mb-8"
+          className="mb-4"
         />
 
         {/* 📜 RECIPE LIST */}
@@ -130,16 +130,16 @@ export default function CraftingScreen() {
             const meta = itemTemplates[r.resultItemCode];
             const canCraft = r.ingredients.every((ing: any) => getOwnedQuantity(ing.itemCode) >= ing.quantity);
             return (
-              <Card delay={index * 20} variant="flat" padding="default" className="mb-4">
+              <Card delay={index * 15} variant="flat" padding="default" className="mb-3">
                 
-                <View className="flex-row items-center mb-4">
-                   <View className="w-12 h-12 bg-black/40 rounded-xl items-center justify-center border border-white/10 mr-4">
-                      <Text className="text-2xl">{meta?.emoji || "⚒️"}</Text>
-                   </View>
-                   <View className="flex-1">
-                      <Text className="text-white text-base font-pixel-bold leading-tight mb-0.5">{meta?.name?.toUpperCase()}</Text>
-                      <Text className="text-slate-600 text-[8px] font-pixel-bold uppercase tracking-[2px]">{meta?.type}</Text>
-                   </View>
+                <View className="flex-row items-center mb-3">
+                  <View className="w-10 h-10 bg-mystic/10 rounded-xl items-center justify-center border border-mystic/20 mr-3">
+                     <Text className="text-xl">{meta?.emoji || "⚒️"}</Text>
+                  </View>
+                  <View className="flex-1">
+                     <Text className="text-frost text-sm font-pixel-bold leading-tight mb-0.5">{meta?.name?.toUpperCase()}</Text>
+                     <Text className="text-frost-muted text-[8px] font-pixel-bold uppercase tracking-[1px]">{meta?.type}</Text>
+                  </View>
                    <StandardButton 
                      label={canCraft ? "FORGE" : "LOCKED"}
                      onPress={() => handleCraft(r.id)}
@@ -150,15 +150,15 @@ export default function CraftingScreen() {
                 </View>
 
                 {/* 🎒 INGREDIENTS GRID */}
-                <View className="bg-black/20 p-3 rounded-xl border border-white/5 flex-row flex-wrap">
+                <View className="bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04] flex-row flex-wrap">
                    {r.ingredients.map((ing: any, idx: number) => {
                      const ingMeta = itemTemplates[ing.itemCode];
                      const owned = getOwnedQuantity(ing.itemCode);
                      const hasEnough = owned >= ing.quantity;
                      return (
-                       <View key={idx} className="flex-row items-center mr-6 mb-2">
-                          <Text className="text-lg mr-2">{ingMeta?.emoji || "📦"}</Text>
-                          <Text className={`text-[9px] font-pixel-bold ${hasEnough ? "text-slate-400" : "text-rose-500"}`}>
+                       <View key={idx} className="flex-row items-center mr-4 mb-1">
+                          <Text className="text-base mr-1.5">{ingMeta?.emoji || "📦"}</Text>
+                          <Text className={`text-[8px] font-pixel-bold ${hasEnough ? "text-white/60" : "text-white/20"}`}>
                              {owned} / {ing.quantity}
                           </Text>
                        </View>
@@ -169,9 +169,9 @@ export default function CraftingScreen() {
             );
           }}
           ListEmptyComponent={
-            <View className="items-center justify-center py-20 opacity-30">
-               <Ionicons name="hammer-outline" size={64} color="#475569" />
-               <Text className="text-slate-600 text-sm font-pixel-bold uppercase tracking-widest mt-6">Anvil is Cold</Text>
+            <View className="items-center justify-center py-20 opacity-20">
+               <Ionicons name="hammer-outline" size={48} color="#ffffff" />
+               <Text className="text-white/40 text-[9px] font-pixel-bold uppercase tracking-widest mt-4">Anvil is Cold</Text>
             </View>
           }
         />

@@ -26,6 +26,14 @@ export declare class MarketService {
             maxRoll: number;
             levelReq: number;
             equipSlot: string | null;
+            classType: string | null;
+            statLifesteal: number | null;
+            statThorns: number | null;
+            statGoldBonus: number | null;
+            statExpBonus: number | null;
+            statMoveSpeed: number | null;
+            statHpRegen: number | null;
+            sprites: import("@prisma/client/runtime/client").JsonValue | null;
             rarityId: string;
         };
         seller: {

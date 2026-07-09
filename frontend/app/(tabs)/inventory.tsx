@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, memo } from "react";
 import { useFocusEffect } from "expo-router";
 import { gameApi, InventoryItem } from "../../api/game";
 import Toast from "react-native-toast-message";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { useGameStore } from "../../store/useGameStore";
 
@@ -40,8 +40,8 @@ const InventoryItemCell = memo(({
   if (!item) {
     return (
       <View className={containerClass}>
-        <View className="w-full h-full bg-slate-900/20 border-2 border-slate-800/40 rounded-lg items-center justify-center">
-           <View className="w-1 h-1 rounded-full bg-white/5" />
+        <View className="w-full h-full bg-white/[0.02] border border-white/[0.06] rounded-lg items-center justify-center">
+           <View className="w-1 h-1 rounded-full bg-white/10" />
         </View>
       </View>
     );
@@ -49,7 +49,7 @@ const InventoryItemCell = memo(({
 
   return (
     <Animated.View 
-      entering={index < 40 ? FadeIn.delay(index * 10).duration(200) : undefined} 
+      entering={index < 30 ? FadeInDown.delay(index * 8).duration(200) : undefined} 
       className={containerClass}
     >
       <ItemIcon 
@@ -187,10 +187,10 @@ export default function InventoryScreen() {
   ), [itemTemplates, equippedIds]);
 
   return (
-    <View className="flex-1 bg-[#020617]">
+    <View className="flex-1 bg-void">
       <View 
         className="flex-1 px-4"
-        style={{ paddingTop: Math.max(insets.top, 16) }}
+        style={{ paddingTop: Math.max(insets.top, 12) }}
       >
         
         <ScreenHeader 
@@ -209,22 +209,22 @@ export default function InventoryScreen() {
           tabs={CATEGORIES} 
           activeTab={selectedCategory} 
           onTabChange={setSelectedCategory} 
-          className="mb-8"
+          className="mb-4"
         />
 
         {/* 📦 THE GRID */}
         {loading && !refreshing ? (
           <View className="flex-1 justify-center items-center">
-            <ActivityIndicator color="#fbbf24" size="large" />
+            <ActivityIndicator color="#ffffff" size="large" />
           </View>
         ) : (
           <FlatList
             data={gridData}
             numColumns={5}
             keyExtractor={(item, index) => item?.id || `empty-${index}`}
-            columnWrapperStyle={{ justifyContent: "center", gap: 8, marginBottom: 8 }}
+            columnWrapperStyle={{ justifyContent: "center", gap: 6, marginBottom: 6 }}
             showsVerticalScrollIndicator={false}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchInventory(); }} tintColor="#fbbf24" />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchInventory(); }} tintColor="#ffffff" />}
             renderItem={renderItem}
             initialNumToRender={40}
             maxToRenderPerBatch={40}

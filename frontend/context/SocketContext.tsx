@@ -2,8 +2,10 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../store/useAuthStore';
 import { useSocialStore } from '../store/useSocialStore';
+import { useCharacterStore } from '../store/useCharacterStore';
 import Toast from 'react-native-toast-message';
 import { router, useRootNavigationState } from 'expo-router';
+import Constants from 'expo-constants';
 
 interface AlertConfig {
   visible: boolean;
@@ -42,7 +44,7 @@ const SocketContext = createContext<SocketContextType>({
 
 export const useSocket = () => useContext(SocketContext);
 
-export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
@@ -92,7 +94,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+    const hostUri = Constants.expoConfig?.hostUri;
+    const hostIp = hostUri ? hostUri.split(":")[0] : "localhost";
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || `http://${hostIp}:3000`;
     const newSocket = io(apiUrl, {
       auth: { token },
       transports: ['websocket'],
@@ -105,7 +109,17 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     newSocket.on('connect_error', (err) => {
       console.error('🔌 Socket connection error:', err.message);
-      if (err.message.includes('Authentication error')) {
+      if (err.message.includes('banned')) {
+        showAlert({
+          title: 'Account Banned',
+          message: err.message,
+          type: 'error',
+          onConfirm: () => {
+            hideAlert();
+            useAuthStore.getState().logout();
+          },
+        });
+      } else if (err.message.includes('Authentication error')) {
         useAuthStore.getState().logout();
       }
     });
@@ -192,12 +206,38 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
        useSocialStore.getState().setHasFriendRequest(true);
     });
 
+    newSocket.on('character_updated', (data: any) => {
+       console.log('🔄 Real-time character update received via socket');
+       useCharacterStore.getState().setCharacter(data.character);
+       useCharacterStore.getState().setBattleLogs(data.latestBattles);
+    });
+
+    newSocket.on("banned", (data: { reason?: string }) => {
+      showAlert({
+        title: 'You have been banned',
+        message: data.reason || 'An admin has banned your account.',
+        type: 'error',
+        onConfirm: () => {
+          hideAlert();
+          useAuthStore.getState().logout();
+        },
+      });
+    });
+
     newSocket.on("chat_message", (msg: any) => {
        if (msg.channel === "whispers") {
           // If we are the recipient and not currently viewing this chat in SocialScreen, mark as unread
           // Note: Since SocketContext doesn't know the current active tab easily without more state,
           // we'll set it to true, and SocialScreen will clear it if active.
           useSocialStore.getState().setHasUnreadWhispers(true);
+       }
+       if (msg.senderId === "SYSTEM" || msg.senderName === "[SYSTEM]") {
+          Toast.show({
+             type: 'info',
+             text1: '🔔 SYSTEM ANNOUNCEMENT',
+             text2: msg.message,
+             visibilityTime: 6000
+          });
        }
     });
 

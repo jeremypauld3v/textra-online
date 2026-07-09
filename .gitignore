@@ -33,3 +33,4 @@ app-example
 # Backend / Database
 /backend/prisma/migrations/
 /backend/generated/
+backend/nul

@@ -47,14 +47,15 @@ export default memo(function ItemIcon({
     }
   };
 
+  // Subtle colors for item templates to restore visibility
   const getRarityStyles = () => {
     switch (rarity) {
-      case "UNCOMMON": return { border: "border-emerald-600/40", bg: "bg-emerald-950/30" };
-      case "RARE": return { border: "border-blue-600/50", bg: "bg-blue-950/30" };
-      case "EPIC": return { border: "border-purple-600/60", bg: "bg-purple-950/40" };
-      case "LEGENDARY": return { border: "border-amber-500", bg: "bg-amber-950/50" };
-      case "MYTHICAL": return { border: "border-rose-600", bg: "bg-rose-950/60" };
-      default: return { border: "border-slate-800", bg: "bg-slate-900/80" };
+      case "UNCOMMON": return { border: "border-emerald-600/40", bg: "bg-emerald-950/20" };
+      case "RARE": return { border: "border-blue-600/50", bg: "bg-blue-950/20" };
+      case "EPIC": return { border: "border-purple-600/60", bg: "bg-purple-950/20" };
+      case "LEGENDARY": return { border: "border-amber-500/70", bg: "bg-amber-950/30" };
+      case "MYTHICAL": return { border: "border-rose-600/80", bg: "bg-rose-950/40" };
+      default: return { border: "border-white/10", bg: "bg-white/[0.03]" };
     }
   };
 
@@ -86,7 +87,7 @@ export default memo(function ItemIcon({
 
   const shineStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shineX.value }, { rotate: '25deg' }],
-    opacity: rarity === "MYTHICAL" ? 0.6 : rarity === "LEGENDARY" ? 0.4 : 0.25,
+    opacity: rarity === "MYTHICAL" ? 0.5 : rarity === "LEGENDARY" ? 0.35 : 0.2,
   }));
 
   return (
@@ -95,32 +96,32 @@ export default memo(function ItemIcon({
       disabled={!onPress}
       className={className}
       style={({ pressed }) => ({
-        opacity: pressed ? 0.8 : 1,
+        opacity: pressed ? 0.7 : 1,
       })}
     >
       <View className={`${getContainerStyles()} border-2 ${rStyles.border} ${rStyles.bg} items-center justify-center rounded-lg overflow-hidden`}>
         
-        {/* 🏛️ CORNER BRACKETS */}
-        <View className="absolute top-0 left-0 w-1.5 h-1.5 border-t border-l border-white/20" />
-        <View className="absolute top-0 right-0 w-1.5 h-1.5 border-t border-r border-white/20" />
-        <View className="absolute bottom-0 left-0 w-1.5 h-1.5 border-b border-l border-white/20" />
-        <View className="absolute bottom-0 right-0 w-1.5 h-1.5 border-b border-r border-white/20" />
+        {/* Corner brackets */}
+        <View className="absolute top-0 left-0 w-1.5 h-1.5 border-t border-l border-white/[0.15]" />
+        <View className="absolute top-0 right-0 w-1.5 h-1.5 border-t border-r border-white/[0.15]" />
+        <View className="absolute bottom-0 left-0 w-1.5 h-1.5 border-b border-l border-white/[0.15]" />
+        <View className="absolute bottom-0 right-0 w-1.5 h-1.5 border-b border-r border-white/[0.15]" />
 
         <Text className={getEmojiSize()}>{emoji}</Text>
         
         {isEquipped && (
-          <View className="absolute -top-2 -right-2 bg-indigo-600 w-5 h-5 rounded-md items-center justify-center border border-indigo-400 z-10">
-            <Ionicons name="shield-checkmark" size={10} color="white" />
+          <View className="absolute -top-2 -right-2 bg-white w-5 h-5 rounded-md items-center justify-center border border-white/50 z-10">
+            <Ionicons name="shield-checkmark" size={10} color="black" />
           </View>
         )}
 
         {quantity && quantity > 1 && (
-          <View className="absolute -bottom-1 -right-1 bg-slate-950 px-1 py-0.5 rounded border border-slate-700 z-10">
-             <Text className="text-[8px] text-amber-500 font-pixel-bold">{quantity}</Text>
+          <View className="absolute -bottom-1 -right-1 bg-black px-1 py-0.5 rounded border border-white/25 z-10">
+             <Text className="text-[8px] text-white font-pixel-bold">{quantity}</Text>
           </View>
         )}
 
-        {/* ✨ MMORPG SHINE EFFECT */}
+        {/* ✨ MONOCHROME SHINE EFFECT */}
         {["RARE", "EPIC", "LEGENDARY", "MYTHICAL"].includes(rarity) && (
           <Animated.View 
             style={[
@@ -129,7 +130,7 @@ export default memo(function ItemIcon({
               shineStyle
             ]}
           >
-            <View className="w-8 h-full bg-white/40 blur-xl" />
+            <View className="w-8 h-full bg-white/30 blur-xl" />
           </Animated.View>
         )}
       </View>

@@ -36,22 +36,22 @@ const MarketplaceListingCard = memo(({
   onCancel: (id: string) => void; 
 }) => {
   return (
-    <Card delay={index < 10 ? index * 20 : 0} className="mb-6">
+    <Card delay={index < 10 ? index * 15 : 0} className="mb-4">
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center flex-1">
-          <View className="w-16 h-16 bg-black/40 rounded-2xl items-center justify-center border border-white/10 mr-5">
-            <Text className="text-3xl">{template?.emoji || "📦"}</Text>
+          <View className="w-12 h-12 bg-white/5 rounded-xl items-center justify-center border border-white/10 mr-4">
+            <Text className="text-2xl">{template?.emoji || "📦"}</Text>
           </View>
           <View className="flex-1">
-            <Text className="text-white text-lg font-pixel-bold leading-tight mb-1">{template?.name.toUpperCase()}</Text>
-            <Text className="text-slate-600 text-[8px] font-pixel-bold uppercase tracking-[2px]">{template?.type}</Text>
+            <Text className="text-white text-base font-pixel-bold leading-tight mb-0.5">{template?.name.toUpperCase()}</Text>
+            <Text className="text-white/30 text-[8px] font-pixel-bold uppercase tracking-[1px]">{template?.type}</Text>
           </View>
         </View>
         
         <View className="items-end">
-          <View className="flex-row items-center bg-amber-500/5 px-3 py-1 rounded-lg mb-4">
-            <Text className="text-amber-500 text-xl font-pixel-bold mr-2">{listing.price}</Text>
-            <Ionicons name="cash" size={14} color="#fbbf24" />
+          <View className="flex-row items-center bg-white/5 px-2.5 py-1 rounded-lg mb-2 border border-white/10">
+            <Text className="text-white text-base font-pixel-bold mr-1.5">{listing.price}</Text>
+            <Ionicons name="cash" size={12} color="rgba(255, 255, 255, 0.6)" />
           </View>
           
           {isMine ? (
@@ -72,11 +72,11 @@ const MarketplaceListingCard = memo(({
         </View>
       </View>
       
-      <View className="mt-4 pt-4 border-t border-white/5 flex-row justify-between items-center">
-        <Text className="text-slate-500 text-[8px] font-pixel-bold uppercase tracking-widest">Seller: {listing.sellerName}</Text>
+      <View className="mt-3 pt-3 border-t border-white/[0.04] flex-row justify-between items-center">
+        <Text className="text-white/30 text-[8px] font-pixel-bold uppercase tracking-widest">Seller: {listing.sellerName}</Text>
         {template?.rarityId && (
-          <View className="px-2 py-0.5 rounded-full border border-white/10 bg-white/5">
-            <Text className="text-white text-[7px] font-pixel-bold uppercase tracking-[2px] opacity-60">{template.rarityId}</Text>
+          <View className="px-2 py-0.5 rounded border border-white/10 bg-white/5">
+            <Text className="text-white/50 text-[7px] font-pixel-bold uppercase tracking-[1px]">{template.rarityId}</Text>
           </View>
         )}
       </View>
@@ -158,17 +158,17 @@ export default function MarketplaceScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-[#020617] justify-center items-center">
-        <ActivityIndicator color="#fbbf24" size="large" />
+      <View className="flex-1 bg-void justify-center items-center">
+        <ActivityIndicator color="#A78BFA" size="large" />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#020617]">
+    <View className="flex-1 bg-void">
       <View 
         className="flex-1 px-6"
-        style={{ paddingTop: Math.max(insets.top, 16) }}
+        style={{ paddingTop: Math.max(insets.top, 12) }}
       >
         <ScreenHeader 
           title="Market" 
@@ -185,14 +185,14 @@ export default function MarketplaceScreen() {
           tabs={["browse", "mine"] as const} 
           activeTab={tab} 
           onTabChange={setTab} 
-          className="mb-6"
+          className="mb-3"
         />
 
         <TabBar 
           tabs={CATEGORIES} 
           activeTab={selectedType} 
           onTabChange={setSelectedType} 
-          className="mb-8"
+          className="mb-4"
         />
 
         {/* 📜 MERCHANT LISTINGS */}
@@ -200,16 +200,16 @@ export default function MarketplaceScreen() {
           data={filteredListings}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchListings} tintColor="#fbbf24" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchListings} tintColor="#ffffff" />}
           renderItem={renderItem}
           initialNumToRender={10}
           maxToRenderPerBatch={10}
           windowSize={5}
           removeClippedSubviews={true}
           ListEmptyComponent={
-            <View className="items-center justify-center py-20 opacity-30">
-               <Ionicons name="basket-outline" size={64} color="#475569" />
-               <Text className="text-slate-600 text-sm font-pixel-bold uppercase tracking-widest mt-6">No Goods in Sight</Text>
+            <View className="items-center justify-center py-20 opacity-20">
+               <Ionicons name="basket-outline" size={48} color="#ffffff" />
+               <Text className="text-white/40 text-[9px] font-pixel-bold uppercase tracking-widest mt-4">No Goods in Sight</Text>
             </View>
           }
         />

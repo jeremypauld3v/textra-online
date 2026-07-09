@@ -21,7 +21,7 @@ export declare const getDepthTier: (depth: number) => Promise<{
 }>;
 export declare function generatePVEEncounter(character: Character): Promise<{
     type: string;
-    name: string;
+    name: any;
     hp: number;
     maxHp: number;
     attack: number;
@@ -77,6 +77,8 @@ export declare function executeCombat(character: Character, enemy: any): Promise
         equippedRing1Id: string | null;
         equippedRing2Id: string | null;
         gold: number;
+        isBanned: boolean;
+        banReason: string | null;
     };
     log: {
         id: string;
@@ -140,6 +142,8 @@ export declare function executeGathering(character: Character, node: any): Promi
         equippedRing1Id: string | null;
         equippedRing2Id: string | null;
         gold: number;
+        isBanned: boolean;
+        banReason: string | null;
     };
     log: {
         id: string;
@@ -152,7 +156,8 @@ export declare function executeGathering(character: Character, node: any): Promi
     };
     experienceGained: any;
     goldGained: number;
-    startIntegrity: any;
+    startEnemyHp: any;
+    startMaxEnemyHp: any;
     startMaxPlayerHp: number;
     startPlayerHp: number;
     lootedItems: any[];

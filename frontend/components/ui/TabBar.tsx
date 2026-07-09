@@ -45,7 +45,7 @@ const PulsingShadow = ({ side }: { side: 'left' | 'right' }) => {
       pointerEvents="none"
     >
       <LinearGradient
-        colors={side === 'left' ? ['rgba(2, 6, 23, 0.95)', 'transparent'] : ['transparent', 'rgba(2, 6, 23, 0.95)']}
+        colors={side === 'left' ? ['rgba(0, 0, 0, 0.95)', 'transparent'] : ['transparent', 'rgba(0, 0, 0, 0.95)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={{ flex: 1 }}
@@ -81,7 +81,7 @@ const TabBar = <T extends string>({
   const showLeftIndicator = scrollInfo.contentOffsetX > 10;
 
   return (
-    <View className={`h-12 bg-slate-900/40 p-1 rounded-2xl border border-white/5 relative overflow-hidden ${className}`}>
+    <View className={`h-11 bg-white/[0.04] p-1 rounded-xl border border-white/[0.06] relative overflow-hidden ${className}`}>
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -92,7 +92,7 @@ const TabBar = <T extends string>({
         onLayout={(e) => setScrollInfo(prev => ({ ...prev, layoutWidth: e.nativeEvent.layout.width }))}
         onContentSizeChange={(w) => setScrollInfo(prev => ({ ...prev, contentWidth: w }))}
       >
-        <View className="flex-1 flex-row items-center px-1">
+        <View className="flex-1 flex-row items-center px-0.5">
           {tabs.map((tab, index) => {
             const isActive = activeTab === tab;
             const badge = badgeCounts[tab];
@@ -101,25 +101,25 @@ const TabBar = <T extends string>({
               <Pressable 
                 key={tab} 
                 onPress={() => onTabChange(tab)}
-                className={`flex-1 flex-row items-center justify-center py-2.5 rounded-xl border relative ${isActive ? "bg-slate-800 border-white/10" : "border-transparent"}`}
+                className={`flex-1 flex-row items-center justify-center py-2 rounded-lg border relative ${isActive ? "bg-white/10 border-white/[0.15]" : "border-transparent"}`}
                 style={{ 
-                  marginLeft: index === 0 ? 0 : 4,
-                  minWidth: tabs.length > 3 ? 100 : 0,
+                  marginLeft: index === 0 ? 0 : 3,
+                  minWidth: tabs.length > 3 ? 90 : 0,
                 }}
               >
                 <Text 
                   numberOfLines={1}
-                  className={`text-[8px] font-pixel-bold uppercase tracking-[1px] text-center ${isActive ? "text-white" : "text-slate-600"}`}
+                  className={`text-[8px] font-pixel-bold uppercase tracking-[1px] text-center ${isActive ? "text-white" : "text-white/25"}`}
                 >
                   {tab}
                 </Text>
                 
                 {badge && (
                   <View 
-                    className={`ml-2 rounded-full border border-[#020617] ${typeof badge === 'number' ? 'px-1 min-w-[12px] h-3 items-center justify-center bg-rose-500' : 'w-2 h-2 bg-rose-500'}`}
+                    className={`ml-1.5 rounded-full border border-black ${typeof badge === 'number' ? 'px-1 min-w-[12px] h-3 items-center justify-center bg-white' : 'w-1.5 h-1.5 bg-white'}`}
                   >
                     {typeof badge === 'number' && (
-                      <Text className="text-[6px] text-white font-pixel-bold">{badge}</Text>
+                      <Text className="text-[6px] text-black font-pixel-bold">{badge}</Text>
                     )}
                   </View>
                 )}
@@ -129,7 +129,6 @@ const TabBar = <T extends string>({
         </View>
       </ScrollView>
 
-      {/* 🌑 SHADOW HINTS (PULSING FADING EDGES) */}
       {showLeftIndicator && <PulsingShadow side="left" />}
       {showRightIndicator && <PulsingShadow side="right" />}
     </View>

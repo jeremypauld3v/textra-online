@@ -1,11 +1,11 @@
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useEncounterStore } from "../store/useEncounterStore";
-import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, withDelay, FadeIn } from "react-native-reanimated";
+import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, withDelay, FadeIn, FadeInDown } from "react-native-reanimated";
 
 // UI Components
 import ProgressBar from "../components/ui/ProgressBar";
@@ -26,6 +26,13 @@ export default function EncounterScreen() {
   const [isPlayerAttacking, setIsPlayerAttacking] = useState(false);
   const [isEnemyAttacking, setIsEnemyAttacking] = useState(false);
   const [showRewards, setShowRewards] = useState(false);
+  const [showCritLabel, setShowCritLabel] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  
+  const cycleSpeed = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSpeed(prev => prev === 1 ? 2 : prev === 2 ? 4 : 1);
+  }, []);
   
   const playerPosX = useSharedValue(0);
   const playerRotation = useSharedValue(0);
@@ -39,19 +46,35 @@ export default function EncounterScreen() {
   const screenShake = useSharedValue(0);
   const flashOpacity = useSharedValue(0);
   const [dmgText, setDmgText] = useState("");
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    return () => { isMounted.current = false; };
+  }, []);
 
   const safeBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/adventure");
+    if (!isMounted.current) return;
+    try {
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/adventure");
+    } catch {
+      // Navigation not ready yet — retry on next frame
+      requestAnimationFrame(() => {
+        try {
+          if (router.canGoBack()) router.back();
+          else router.replace("/(tabs)/adventure");
+        } catch {}
+      });
+    }
   }, [router]);
 
   useEffect(() => { if (!simBattle) safeBack(); }, [simBattle, safeBack]);
   useEffect(() => {
     if (!simBattle) { setSimStarted(false); return; }
     setSimStarted(false);
-    const delay = setTimeout(() => setSimStarted(true), 1200);
+    const delay = setTimeout(() => setSimStarted(true), 1200 / speed);
     return () => clearTimeout(delay);
-  }, [simBattle]);
+  }, [simBattle, speed]);
 
   const triggerAnimation = useCallback((attacker: string, damage: number, isCrit?: boolean) => {
     const isPlayer = attacker === "Player";
@@ -59,42 +82,49 @@ export default function EncounterScreen() {
     const attackerPos = isPlayer ? playerPosX : enemyPosX;
     lastDamage.value = damage;
     setDmgText(damage > 0 ? `-${damage}` : "MISS");
-    damagePosX.value = isPlayer ? 60 : -60;
+    damagePosX.value = isPlayer ? 50 : -50;
     isCritValue.value = isCrit ? 1 : 0;
+    setShowCritLabel(!!isCrit);
     if (isPlayer) setIsPlayerAttacking(true); else setIsEnemyAttacking(true);
 
     if (isCrit) {
-       flashOpacity.value = withSequence(withTiming(0.4, { duration: 50 }), withTiming(0, { duration: 200 }));
-       screenShake.value = withSequence(withTiming(15, { duration: 50 }), withTiming(-15, { duration: 50 }), withTiming(0, { duration: 50 }));
+       flashOpacity.value = withSequence(withTiming(0.3, { duration: 50 / speed }), withTiming(0, { duration: 200 / speed }));
+       screenShake.value = withSequence(withTiming(10, { duration: 50 / speed }), withTiming(-10, { duration: 50 / speed }), withTiming(0, { duration: 50 / speed }));
     }
 
     const direction = isPlayer ? 1 : -1;
-    attackerPos.value = withSequence(withTiming(80 * direction, { duration: 200 }), withTiming(0, { duration: 200 }));
+    attackerPos.value = withSequence(withTiming(60 * direction, { duration: 200 / speed }), withTiming(0, { duration: 200 / speed }));
 
     setTimeout(() => {
       Haptics.impactAsync(isCrit ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
-      targetShake.value = withSequence(withTiming(isCrit ? 20 : 10, { duration: 50 }), withTiming(0, { duration: 50 }));
-      if (damage > 0) damageOpacity.value = withSequence(withTiming(1, { duration: 100 }), withDelay(isCrit ? 800 : 400, withTiming(0, { duration: 300 })));
-      setTimeout(() => { setIsPlayerAttacking(false); setIsEnemyAttacking(false); }, 300);
-    }, 180);
-  }, [playerPosX, enemyPosX, playerShake, enemyShake, lastDamage, damageOpacity, damagePosX, isCritValue, screenShake, flashOpacity]);
+      targetShake.value = withSequence(withTiming(isCrit ? 15 : 8, { duration: 50 / speed }), withTiming(0, { duration: 50 / speed }));
+      if (damage > 0) {
+        damageOpacity.value = withSequence(
+          withTiming(1, { duration: 100 / speed }), 
+          withDelay((isCrit ? 800 : 400) / speed, withTiming(0, { duration: 300 / speed }))
+        );
+      }
+      const spriteDuration = Math.max(400, 1200 / speed); // Min 400ms so sprite is always visible
+      setTimeout(() => { setIsPlayerAttacking(false); setIsEnemyAttacking(false); }, spriteDuration);
+    }, 180 / speed);
+  }, [playerPosX, enemyPosX, playerShake, enemyShake, lastDamage, damageOpacity, damagePosX, isCritValue, screenShake, flashOpacity, speed]);
 
   useEffect(() => {
     if (!simBattle || !simStarted) return;
     const currentTurnData = simBattle.log.logDetails[simTurn];
     if (currentTurnData) triggerAnimation(currentTurnData.attacker, currentTurnData.damage, currentTurnData.isCrit);
     if (simTurn < simBattle.log.logDetails.length - 1) {
-      const turnDelay = simBattle.log.logDetails[simTurn]?.isCrit ? GAME_CONFIG.BATTLE_TURN_DELAY + 400 : GAME_CONFIG.BATTLE_TURN_DELAY;
+      const turnDelay = (simBattle.log.logDetails[simTurn]?.isCrit ? GAME_CONFIG.BATTLE_TURN_DELAY + 400 : GAME_CONFIG.BATTLE_TURN_DELAY) / speed;
       const t = setTimeout(() => setSimTurn((v) => v + 1), turnDelay);
       return () => clearTimeout(t);
     }
     if (simTurn === simBattle.log.logDetails.length - 1) {
       const t = setTimeout(() => {
         setShowRewards(true);
-      }, GAME_CONFIG.BATTLE_END_DELAY + 500);
+      }, (GAME_CONFIG.BATTLE_END_DELAY + 500) / speed);
       return () => clearTimeout(t);
     }
-  }, [simBattle, simTurn, simStarted, triggerAnimation, setSimBattle]);
+  }, [simBattle, simTurn, simStarted, triggerAnimation, setSimBattle, speed]);
 
   const handleEncounterEnd = useCallback(() => {
     setShowRewards(false);
@@ -114,6 +144,24 @@ export default function EncounterScreen() {
     return { playerHp: p, enemyHp: e };
   }, [simBattle, simTurn, simStarted]);
 
+  // Terminal stack logs calculations
+  const visibleLogs = useMemo(() => {
+    if (!simBattle || !simStarted) return [];
+    const logs = [];
+    for (let i = Math.max(0, simTurn - 9); i <= simTurn; i++) {
+      const turn = simBattle.log.logDetails[i];
+      if (turn) {
+        logs.push({
+          id: i,
+          message: turn.message,
+          isCrit: turn.isCrit,
+          isLatest: i === simTurn
+        });
+      }
+    }
+    return logs;
+  }, [simBattle, simTurn, simStarted]);
+
   const playerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: playerPosX.value + playerShake.value }, { rotate: `${playerRotation.value}deg` }] }));
   const enemyStyle = useAnimatedStyle(() => ({ transform: [{ translateX: enemyPosX.value + enemyShake.value }] }));
   
@@ -128,27 +176,19 @@ export default function EncounterScreen() {
   const damageTextStyle = useAnimatedStyle(() => ({
     opacity: damageOpacity.value,
     transform: [
-      { translateY: -60 - (damageOpacity.value * 60) }, 
+      { translateY: -50 - (damageOpacity.value * 40) }, 
       { translateX: damagePosX.value }, 
-      { scale: isCritValue.value ? 1.8 : 1.2 }
+      { scale: isCritValue.value ? 1.6 : 1.1 }
     ]
   }));
 
   const damageTextInnerStyle = useAnimatedStyle(() => ({
-    fontSize: isCritValue.value ? 48 : 32,
-    color: isCritValue.value ? "#fbbf24" : "#f43f5e",
+    fontSize: isCritValue.value ? 40 : 28,
+    color: "#ffffff",
   }));
 
-  const enemyDisplay = useMemo(() => {
-    if (!simBattle?.isGathering) return "👹";
-    const name = simBattle.enemyName || "";
-    if (name.includes("Tree")) return "🌳";
-    if (name.includes("Ore")) return "⛏️";
-    return "📦";
-  }, [simBattle]);
-
   return (
-    <View className="flex-1 bg-[#020617]">
+    <View className="flex-1 bg-void">
       <Animated.View style={[StyleSheet.absoluteFill, flashStyle, { backgroundColor: "white", zIndex: 99 }]} pointerEvents="none" />
       
       {simBattle && (
@@ -163,61 +203,121 @@ export default function EncounterScreen() {
         />
       )}
 
+      {/* Grid Lines Overlay */}
+
       {!simBattle || !simStarted ? (
         <View className="flex-1 justify-center items-center px-12">
-           <ActivityIndicator size="small" color="#818cf8" />
-           <Text className="text-slate-600 text-[10px] font-pixel-bold uppercase tracking-[4px] mt-8">Initializing Encounter</Text>
+           <ActivityIndicator size="small" color="#ffffff" />
+           <Text className="text-white/40 text-[8px] font-pixel-bold uppercase tracking-[3px] mt-6">Initializing Encounter</Text>
         </View>
       ) : (
-        <Animated.View style={[{ flex: 1 }, screenStyle]}>
-          {/* ⚔️ MINIMALIST HUD */}
-          <View 
-            style={{ paddingTop: Math.max(insets.top, 16) }}
-            className="px-8 flex-row justify-between"
-          >
-             <View className="flex-1 pr-6 border-r border-white/5">
-                <Text className="text-white text-base font-pixel-bold mb-2">{Math.floor(combatSim?.playerHp ?? 0)} HP</Text>
-                <ProgressBar current={combatSim?.playerHp ?? 0} max={simBattle.startMaxPlayerHp || 1} color="rose" size="xs" hideLabel />
-             </View>
-             <View className="flex-1 pl-6">
-                <Text className="text-rose-500 text-base font-pixel-bold mb-2 text-right">{Math.floor(combatSim?.enemyHp ?? 0)} HP</Text>
-                <ProgressBar current={combatSim?.enemyHp ?? 0} max={simBattle.startMaxEnemyHp || 1} color="rose" size="xs" hideLabel />
-             </View>
-          </View>
+        <View style={{ flex: 1 }}>
+          <Animated.View style={[{ flex: 1 }, screenStyle]}>
+            {/* 🎭 BATTLESTAGE */}
+            <View 
+              style={{ paddingTop: Math.max(insets.top, 12) }}
+              className="flex-1 items-center justify-center"
+            >
+              <View className="flex-row items-center justify-between w-full px-8">
+                {/* Player Platform */}
+                <View className="items-center">
+                  <Animated.View style={playerStyle}>
+                    <View style={{ width: 160, height: 160 }}>
+                      <Image source={IDLE_SPRITE} style={{ position: 'absolute', width: 160, height: 160, opacity: isPlayerAttacking ? 0 : 1 }} contentFit="contain" />
+                      <Image source={ATTACK_SPRITE} style={{ position: 'absolute', width: 160, height: 160, opacity: isPlayerAttacking ? 1 : 0 }} contentFit="contain" />
+                    </View>
+                  </Animated.View>
+                  <View className="w-20 h-1 bg-white/10 rounded-full mt-2 opacity-50" style={{ transform: [{ scaleY: 0.3 }] }} />
+                </View>
 
-          {/* 🎭 STAGE */}
-          <View className="flex-1 items-center justify-center">
-            <View className="flex-row items-center justify-between w-full px-12">
-              <Animated.View style={playerStyle}><Image source={isPlayerAttacking ? ATTACK_SPRITE : IDLE_SPRITE} style={{ width: 140, height: 140 }} contentFit="contain" /></Animated.View>
-              <Animated.View style={enemyStyle}>
-                {simBattle.isPvp ? <Image source={isEnemyAttacking ? ATTACK_SPRITE : IDLE_SPRITE} style={{ width: 140, height: 140, transform: [{ scaleX: -1 }] }} contentFit="contain" /> : <Text className="text-4xl">{enemyDisplay}</Text>}
+                {/* Enemy Platform */}
+                <View className="items-center">
+                  <Animated.View style={enemyStyle}>
+                    <View style={{ width: 160, height: 160 }}>
+                      <Image source={IDLE_SPRITE} style={{ position: 'absolute', width: 160, height: 160, transform: [{ scaleX: -1 }], opacity: isEnemyAttacking ? 0 : 1 }} contentFit="contain" />
+                      <Image source={ATTACK_SPRITE} style={{ position: 'absolute', width: 160, height: 160, transform: [{ scaleX: -1 }], opacity: isEnemyAttacking ? 1 : 0 }} contentFit="contain" />
+                    </View>
+                  </Animated.View>
+                  <View className="w-20 h-1 bg-white/10 rounded-full mt-2 opacity-50" style={{ transform: [{ scaleY: 0.3 }] }} />
+                </View>
+              </View>
+
+              <Animated.View style={damageTextStyle} className="absolute pointer-events-none items-center justify-center">
+                {showCritLabel && (
+                  <Text className="text-white text-[9px] font-pixel-bold uppercase tracking-[2px] mb-0.5">
+                    CRIT!
+                  </Text>
+                )}
+                <Animated.Text style={[
+                  damageTextInnerStyle,
+                  { 
+                    fontWeight: '900',
+                    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+                    textShadowOffset: {width: 0, height: 1},
+                    textShadowRadius: 6
+                  }
+                ]}>
+                  {dmgText}
+                </Animated.Text>
               </Animated.View>
             </View>
 
-            <Animated.View style={damageTextStyle} className="absolute pointer-events-none items-center justify-center">
-              <Animated.Text style={[
-                damageTextInnerStyle,
-                { 
-                  fontWeight: '900',
-                  textShadowColor: 'rgba(0, 0, 0, 0.75)',
-                  textShadowOffset: {width: -1, height: 1},
-                  textShadowRadius: 10
-                }
-              ]}>
-                {dmgText}
-              </Animated.Text>
-            </Animated.View>
-          </View>
+            {/* ⚔️ HEALTH BARS — below sprites */}
+            <View className="px-6 pb-4 gap-3">
+              {/* Player HP */}
+              <View>
+                <View className="flex-row items-center justify-between mb-1.5">
+                  <Text className="text-white text-xs font-pixel-bold">HERO</Text>
+                  <Text className="text-white text-xs font-pixel-bold">{Math.floor(combatSim?.playerHp ?? 0)} / {simBattle.startMaxPlayerHp || 1} HP</Text>
+                </View>
+                <ProgressBar current={combatSim?.playerHp ?? 0} max={simBattle.startMaxPlayerHp || 1} color="verdant" size="sm" hideLabel />
+              </View>
 
-          {/* 📜 MINIMALIST LOG */}
-          <View className="pb-16 px-12">
-             <Animated.View key={simTurn} entering={FadeIn.duration(200)}>
-                <Text className={`text-center font-pixel-bold uppercase tracking-tight ${simBattle.log.logDetails[simTurn]?.isCrit ? "text-amber-400 text-xl" : "text-white text-xs"}`}>
-                  {simBattle.log.logDetails[simTurn]?.message}
-                </Text>
-             </Animated.View>
-          </View>
-        </Animated.View>
+              {/* Enemy HP */}
+              <View>
+                <View className="flex-row items-center justify-between mb-1.5">
+                  <Text className="text-white/60 text-xs font-pixel-bold">
+                    {simBattle.enemyName?.toUpperCase() || "FOE"}
+                  </Text>
+                  <Text className="text-white text-xs font-pixel-bold">{Math.floor(combatSim?.enemyHp ?? 0)} / {simBattle.startMaxEnemyHp || 1} HP</Text>
+                </View>
+                <ProgressBar current={combatSim?.enemyHp ?? 0} max={simBattle.startMaxEnemyHp || 1} color="crimson" size="sm" hideLabel />
+              </View>
+            </View>
+
+            {/* ⚡ SPEED TOGGLE — just above console log */}
+            <View className="flex-row justify-end items-center px-6 pb-2">
+              <Pressable
+                onPress={cycleSpeed}
+                className="flex-row items-center bg-white/[0.04] border border-white/10 rounded-full px-3 py-1.5 active:bg-white/[0.08]"
+              >
+                <Text className="text-white/40 text-[8px] font-pixel-bold uppercase tracking-wider mr-1.5">Speed</Text>
+                <Text className="text-white text-[11px] font-pixel-bold">{speed}x</Text>
+              </Pressable>
+            </View>
+
+            {/* 📜 TERMINAL COMBAT LOG */}
+            <View className="bg-white/[0.02] border border-white/10 rounded-xl p-4 mx-6 mb-6" style={{ minHeight: 240 }}>
+              <View className="space-y-2 flex-1 justify-end">
+                {visibleLogs.map((log) => (
+                  <Animated.View key={log.id} entering={FadeIn.duration(150)}>
+                    <Text 
+                      className={`font-mono text-[9px] tracking-tight ${
+                        log.isLatest 
+                          ? log.isCrit 
+                            ? "text-white font-bold" 
+                            : "text-white/80" 
+                          : "text-white/20"
+                      }`}
+                    >
+                      {log.isLatest ? "> " : "  "} {log.message}
+                    </Text>
+                  </Animated.View>
+                ))}
+              </View>
+            </View>
+          </Animated.View>
+        </View>
       )}
     </View>
   );

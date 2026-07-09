@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "textra-online",
-    "slug": "textra-online",
+    "name": "spritehero-online",
+    "slug": "spritehero-online",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "textraonline",
+    "scheme": "spriteheroonline",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true

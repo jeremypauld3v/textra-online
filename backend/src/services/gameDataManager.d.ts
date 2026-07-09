@@ -47,6 +47,14 @@ declare class GameDataManager {
                 maxRoll: number;
                 levelReq: number;
                 equipSlot: string | null;
+                classType: string | null;
+                statLifesteal: number | null;
+                statThorns: number | null;
+                statGoldBonus: number | null;
+                statExpBonus: number | null;
+                statMoveSpeed: number | null;
+                statHpRegen: number | null;
+                sprites: import("@prisma/client/runtime/client").JsonValue | null;
                 rarityId: string;
             };
         } & {
@@ -62,6 +70,7 @@ declare class GameDataManager {
     } & {
         name: string;
         type: string;
+        sprites: import("@prisma/client/runtime/client").JsonValue | null;
         id: string;
         icon: string;
         baseHp: number;

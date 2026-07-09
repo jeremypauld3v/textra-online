@@ -1,6 +1,6 @@
 import { Pressable, Text, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 
 export type ButtonVariant = "primary" | "success" | "danger" | "warning" | "secondary" | "outline" | "ghost";
 
@@ -29,29 +29,28 @@ export default function StandardButton({
 
   const getVariantStyles = () => {
     switch (variant) {
-      case "primary": return "bg-white border-white";
-      case "success": return "bg-emerald-600 border-emerald-500";
-      case "danger": return "bg-rose-600 border-rose-500";
-      case "warning": return "bg-amber-600 border-amber-500";
-      case "secondary": return "bg-slate-800 border-slate-700";
-      case "outline": return "bg-transparent border-white";
+      case "primary": return "bg-white border-white/80";
+      case "success": return "bg-white/10 border-white/20";
+      case "danger": return "bg-white/10 border-white/20";
+      case "warning": return "bg-white/10 border-white/20";
+      case "secondary": return "bg-white/[0.06] border-white/10";
+      case "outline": return "bg-transparent border-white/20";
       case "ghost": return "bg-transparent border-transparent";
-      default: return "bg-white border-white";
+      default: return "bg-white border-white/80";
     }
   };
 
   const getLabelStyles = () => {
     if (variant === "primary") return "text-black";
-    if (variant === "outline") return "text-white";
-    if (variant === "ghost") return "text-slate-400";
+    if (variant === "ghost") return "text-white/40";
     return "text-white";
   };
 
   const getSizeStyles = () => {
     switch (size) {
       case "sm": return "py-2 px-4 rounded-xl";
-      case "lg": return "py-5 px-8 rounded-[24px]";
-      default: return "py-3 px-6 rounded-2xl";
+      case "lg": return "py-5 px-8 rounded-2xl";
+      default: return "py-3 px-6 rounded-xl";
     }
   };
 
@@ -60,11 +59,11 @@ export default function StandardButton({
   }));
 
   const handlePressIn = () => {
-    scale.value = withTiming(0.96, { duration: 100 });
+    scale.value = withSpring(0.95, { damping: 15, stiffness: 300 });
   };
 
   const handlePressOut = () => {
-    scale.value = withTiming(1, { duration: 100 });
+    scale.value = withSpring(1, { damping: 15, stiffness: 300 });
   };
 
   const getWrapperStyles = () => {
@@ -85,10 +84,7 @@ export default function StandardButton({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={disabled || loading}
-        className={`flex-row items-center justify-center border ${getVariantStyles()} ${getSizeStyles()} ${disabled ? "opacity-40" : ""} ${className}`}
-        style={({ pressed }) => ({
-          elevation: variant === "ghost" ? 0 : 2
-        })}
+        className={`flex-row items-center justify-center border ${getVariantStyles()} ${getSizeStyles()} ${disabled ? "opacity-30" : ""} ${className}`}
       >
         {loading ? (
           <ActivityIndicator size="small" color={variant === "primary" ? "#000000" : "#FFFFFF"} />

@@ -21,12 +21,12 @@ const CATEGORIES = [
 
 const RARITIES = [
   { label: "All Rarity", value: "ALL" },
-  { label: "Common", value: "COMMON", color: "#64748b" },
-  { label: "Uncommon", value: "UNCOMMON", color: "#10b981" },
-  { label: "Rare", value: "RARE", color: "#f59e0b" },
-  { label: "Epic", value: "EPIC", color: "#a855f7" },
-  { label: "Legendary", value: "LEGENDARY", color: "#f97316" },
-  { label: "Mythic", value: "MYTHIC", color: "#ef4444" },
+  { label: "Common", value: "COMMON" },
+  { label: "Uncommon", value: "UNCOMMON" },
+  { label: "Rare", value: "RARE" },
+  { label: "Epic", value: "EPIC" },
+  { label: "Legendary", value: "LEGENDARY" },
+  { label: "Mythic", value: "MYTHIC" },
 ];
 
 export default function FilterSection({
@@ -41,67 +41,71 @@ export default function FilterSection({
   return (
     <View>
       {/* Search Bar */}
-      <View className="bg-slate-950 border border-slate-800 rounded-2xl flex-row items-center px-4 py-2.5 mb-4">
-        <Ionicons name="search" size={16} color="#475569" />
+      <View className="bg-white/[0.04] border border-white/10 rounded-xl flex-row items-center px-4 py-2.5 mb-4">
+        <Ionicons name="search" size={14} color="rgba(255,255,255,0.2)" />
         <TextInput
-          className="flex-1 ml-3 text-white text-xs"
+          className="flex-1 ml-3 text-white text-xs py-0.5"
           placeholder="Search by name..."
-          placeholderTextColor="#475569"
+          placeholderTextColor="rgba(255,255,255,0.2)"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Ionicons name="close-circle" size={18} color="#475569" />
+            <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.4)" />
           </TouchableOpacity>
         )}
       </View>
 
       {/* Type Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row mb-4 h-10">
-        {CATEGORIES.map((cat) => (
-          <TouchableOpacity
-            key={cat.value}
-            onPress={() => setSelectedType(cat.value)}
-            className={`mr-3 px-6 rounded-full justify-center border ${
-              selectedType === cat.value ? "bg-indigo-600 border-indigo-400" : "bg-slate-900 border-slate-800"
-            }`}
-          >
-            <Text
-              className={`text-[10px] uppercase tracking-widest ${
-                selectedType === cat.value ? "text-white" : "text-slate-500"
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row mb-4 h-9">
+        {CATEGORIES.map((cat) => {
+          const isActive = selectedType === cat.value;
+          return (
+            <TouchableOpacity
+              key={cat.value}
+              onPress={() => setSelectedType(cat.value)}
+              className={`mr-2.5 px-5 rounded-lg justify-center border ${
+                isActive ? "bg-white border-white" : "bg-white/[0.04] border-white/5"
               }`}
             >
-              {cat.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                className={`text-[8px] font-pixel-bold uppercase tracking-widest ${
+                  isActive ? "text-black" : "text-white/30"
+                }`}
+              >
+                {cat.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
       {/* Rarity Filters */}
       {showRarity && setSelectedRarity && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row h-10">
-          {RARITIES.map((rar) => (
-            <TouchableOpacity
-              key={rar.value}
-              onPress={() => setSelectedRarity(rar.value)}
-              className={`mr-3 px-6 rounded-full justify-center border ${
-                selectedRarity === rar.value 
-                  ? "bg-slate-800 border-slate-400" 
-                  : "bg-slate-950 border-slate-900"
-              }`}
-              style={selectedRarity === rar.value && rar.color ? { borderColor: rar.color + "80", backgroundColor: rar.color + "20" } : {}}
-            >
-              <Text
-                className={`text-[10px] uppercase tracking-widest ${
-                  selectedRarity === rar.value ? "text-white" : "text-slate-700"
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row h-9">
+          {RARITIES.map((rar) => {
+            const isActive = selectedRarity === rar.value;
+            return (
+              <TouchableOpacity
+                key={rar.value}
+                onPress={() => setSelectedRarity(rar.value)}
+                className={`mr-2.5 px-5 rounded-lg justify-center border ${
+                  isActive 
+                    ? "bg-white border-white" 
+                    : "bg-white/[0.04] border-white/5"
                 }`}
-                style={selectedRarity === rar.value && rar.color ? { color: rar.color } : {}}
               >
-                {rar.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  className={`text-[8px] font-pixel-bold uppercase tracking-widest ${
+                    isActive ? "text-black" : "text-white/30"
+                  }`}
+                >
+                  {rar.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       )}
     </View>

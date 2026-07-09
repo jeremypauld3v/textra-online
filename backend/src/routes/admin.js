@@ -125,6 +125,39 @@ export async function adminRoutes(server) {
         });
         return { success: true };
     });
+    // --- Ban / Unban ---
+    server.post("/players/:id/ban", async (request) => {
+        const { id } = request.params;
+        const { reason } = request.body;
+        const updated = await prisma.character.update({
+            where: { id },
+            data: {
+                isBanned: true,
+                banReason: reason || null,
+            },
+        });
+        // Force disconnect the banned player's socket if they're online
+        const io = getIO();
+        const sockets = await io.fetchSockets();
+        for (const s of sockets) {
+            if (s.data.userId === updated.userId) {
+                s.emit("banned", { reason: reason || "You have been banned by an admin." });
+                s.disconnect(true);
+            }
+        }
+        return updated;
+    });
+    server.post("/players/:id/unban", async (request) => {
+        const { id } = request.params;
+        const updated = await prisma.character.update({
+            where: { id },
+            data: {
+                isBanned: false,
+                banReason: null,
+            },
+        });
+        return updated;
+    });
     // --- Monsters ---
     server.get("/monsters", async () => {
         return await prisma.monsterTemplate.findMany({
@@ -190,6 +223,7 @@ export async function adminRoutes(server) {
                     minDepth: data.minDepth,
                     isBoss: data.isBoss,
                     dungeonId: data.dungeonId,
+                    sprites: data.sprites,
                 }
             });
             // 2. Handle Loot Table (Replace Strategy)
@@ -233,6 +267,7 @@ export async function adminRoutes(server) {
         const node = await prisma.resourceNodeTemplate.create({
             data: {
                 ...rest,
+                sprites: data.sprites,
                 lootTable: lootTable && lootTable.length > 0 ? {
                     create: lootTable.map((l) => ({
                         itemCode: l.itemCode,
@@ -258,6 +293,7 @@ export async function adminRoutes(server) {
                     icon: data.icon,
                     baseHp: data.baseHp,
                     xpReward: data.xpReward,
+                    sprites: data.sprites,
                 }
             });
             if (data.lootTable) {
@@ -302,6 +338,7 @@ export async function adminRoutes(server) {
                 lootMultiplier: data.lootMultiplier,
                 expMultiplier: data.expMultiplier,
                 treasureChance: data.treasureChance,
+                sprites: data.sprites,
             }
         });
     });
@@ -320,6 +357,7 @@ export async function adminRoutes(server) {
                 lootMultiplier: data.lootMultiplier,
                 expMultiplier: data.expMultiplier,
                 treasureChance: data.treasureChance,
+                sprites: data.sprites,
             }
         });
     });
@@ -403,11 +441,13 @@ export async function adminRoutes(server) {
     server.post("/broadcast", async (request) => {
         const { message } = request.body;
         const io = getIO();
-        io.emit("chat_broadcast", {
-            userId: "SYSTEM",
-            characterName: "[SYSTEM]",
+        io.emit("chat_message", {
+            senderId: "SYSTEM",
+            senderName: "[SYSTEM]",
+            senderUserId: "SYSTEM",
             message: message,
-            timestamp: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            channel: "global"
         });
         return { success: true };
     });
@@ -421,17 +461,40 @@ export async function adminRoutes(server) {
     });
     server.post("/zones", async (request) => {
         const data = request.body;
-        return await zoneService.createZone(data);
+        return await zoneService.createZone({ ...data, sprites: data.sprites });
     });
     server.put("/zones/:id", async (request) => {
         const { id } = request.params;
         const data = request.body;
-        return await zoneService.updateZone(id, data);
+        return await zoneService.updateZone(id, { ...data, sprites: data.sprites });
     });
     server.delete("/zones/:id", async (request) => {
         const { id } = request.params;
         await zoneService.deleteZone(id);
         return { success: true };
+    });
+    // --- Reports & Feedback ---
+    server.get("/reports", async () => {
+        return await prisma.userReport.findMany({
+            orderBy: { createdAt: "desc" }
+        });
+    });
+    server.put("/reports/:id/status", async (request, reply) => {
+        const { id } = request.params;
+        const { status } = request.body;
+        if (!["PENDING", "INVESTIGATING", "RESOLVED"].includes(status)) {
+            return reply.status(400).send({ error: "Invalid status value" });
+        }
+        try {
+            const updatedReport = await prisma.userReport.update({
+                where: { id },
+                data: { status }
+            });
+            return updatedReport;
+        }
+        catch (e) {
+            return reply.status(500).send({ error: "Failed to update report status" });
+        }
     });
 }
 //# sourceMappingURL=admin.js.map

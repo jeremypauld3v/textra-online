@@ -60,7 +60,7 @@ export async function authRoutes(server) {
         try {
             const user = await prisma.user.findUnique({
                 where: { email },
-                include: { characters: true }
+                include: { characters: { select: { id: true, isBanned: true, banReason: true } } }
             });
             if (!user) {
                 return reply.status(401).send({ error: "Invalid credentials" });
@@ -69,6 +69,14 @@ export async function authRoutes(server) {
             if (!isValid) {
                 return reply.status(401).send({ error: "Invalid credentials" });
             }
+            // Check if any of the user's characters are banned
+            const bannedChar = user.characters.find(c => c.isBanned);
+            if (bannedChar) {
+                return reply.status(403).send({
+                    error: "ACCOUNT_BANNED",
+                    message: bannedChar.banReason || "Your account has been banned.",
+                });
+            }
             const characterId = user.characters[0]?.id;
             // Generate JWT Token
             const token = server.jwt.sign({
@@ -76,7 +84,7 @@ export async function authRoutes(server) {
                 characterId,
                 email: user.email
             });
-            return reply.send({ token, characterId, userId: user.id, message: "Login successful" });
+            return reply.send({ token, characterId, userId: user.id, isAdmin: user.isAdmin, message: "Login successful" });
         }
         catch (err) {
             server.log.error(err);

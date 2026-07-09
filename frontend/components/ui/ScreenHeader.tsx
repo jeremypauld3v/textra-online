@@ -1,5 +1,5 @@
 import { View, Text } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
 interface ScreenHeaderProps {
   title: string;
@@ -17,22 +17,22 @@ export default function ScreenHeader({
   className = "",
 }: ScreenHeaderProps) {
   return (
-    <Animated.View entering={FadeIn.duration(400)} className={`flex-row justify-between items-center mb-6 ${className}`}>
+    <Animated.View entering={FadeInDown.duration(350)} className={`flex-row justify-between items-center mb-4 ${className}`}>
       <View className="flex-1">
         {subtitle && (
-          <Text className="text-slate-500 uppercase text-[8px] tracking-wider mb-0.5 font-pixel-bold">
+          <Text className="text-white/30 uppercase text-[8px] tracking-[3px] mb-0.5 font-pixel-bold">
             {subtitle}
           </Text>
         )}
-        <Text className="text-2xl text-white uppercase tracking-normal font-pixel-bold">
+        <Text className="text-xl text-white uppercase tracking-normal font-pixel-bold">
           {title}
         </Text>
       </View>
       
       <View className="flex-row items-center">
         {badge && (
-          <View className="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 mr-3">
-            <Text className="text-white text-xs font-pixel-bold">{badge}</Text>
+          <View className="bg-white/[0.06] px-3 py-1.5 rounded-xl border border-white/[0.08] mr-3">
+            <Text className="text-white/60 text-xs font-pixel-bold">{badge}</Text>
           </View>
         )}
         {rightElement}
