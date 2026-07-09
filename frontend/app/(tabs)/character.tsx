@@ -76,10 +76,13 @@ export default function CharacterScreen() {
     else if (ct === 'MAGE') atkMult = 3;
     else if (!hasWeapon) atkMult = 1.5;
     
-    const baseAtk = (s.atk || 0) - (hasWeapon ? (ct === 'WARRIOR' ? str * atkMult : ct === 'ARCHER' ? agi * atkMult : ct === 'MAGE' ? int * atkMult : str * atkMult) : str * atkMult);
+    // Strip current stat contribution to get gear-only base, then add projected contribution
+    const curStr = s.str, curAgi = s.agi, curInt = s.int;
+    const statAtk = (ct === 'WARRIOR' ? curStr : ct === 'ARCHER' ? curAgi : ct === 'MAGE' ? curInt : curStr) * atkMult;
+    const baseAtk = (s.atk || 0) - statAtk;
     const newAtk = baseAtk + (ct === 'WARRIOR' ? str * atkMult : ct === 'ARCHER' ? agi * atkMult : ct === 'MAGE' ? int * atkMult : str * atkMult);
     
-    const baseDef = (s.def || 0) - (agi * 1);
+    const baseDef = (s.def || 0) - (curAgi * 1);
     const newDef = baseDef + (agi * 1);
     
     return {
